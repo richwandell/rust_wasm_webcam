@@ -1,10 +1,11 @@
 #[macro_use]
 extern crate ndarray;
 
-use ndarray::{arr2, Array, Array2, ArrayBase, ArrayView, ArrayViewMut, Dim, Ix2};
+use ndarray::{arr2, Array, Array2, ArrayBase, ArrayView, ArrayViewMut, Dim, Ix2, Array1, arr3, Array3};
 use wasm_bindgen::__rt::core::{mem, slice};
 use wasm_bindgen::__rt::core::ffi::c_void;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::__rt::std::ops::Mul;
 
 mod utils;
 
@@ -34,11 +35,95 @@ pub fn alloc(size: usize) -> *mut c_void {
 
 #[wasm_bindgen]
 pub fn dealloc(ptr: *mut c_void, cap: usize) {
-    unsafe  {
+    unsafe {
         let _buf = Vec::from_raw_parts(ptr, 0, cap);
     }
 }
 
+
+#[wasm_bindgen]
+pub fn sharpen(dest_pointer: *mut u8, width: usize, height: usize) {
+    // pixels are stored in RGBA, so each pixel is 4 bytes
+    let byte_size = width * height * 4;
+    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
+
+    let kernel: Array2<f32> = arr2(&[
+        [0., -1., 0.],
+        [-1., 5., -1.],
+        [0., -1., 0.]
+    ]);
+
+    let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    let rgba = Array::from(v);
+    let m = rgba.into_shape((height, width, 4)).unwrap();
+
+    let ym3 = height - 3;
+    let xm3 = width - 3;
+    let mut i = 0;
+    for y in 0..height {
+        for x in 0..width {
+            let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
+            let gval = (m.slice(s![y..y+3, x..x+3, 1]).to_owned() * &kernel).sum();
+            let bval = (m.slice(s![y..y+3, x..x+3, 2]).to_owned() * &kernel).sum();
+
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            i += 4;
+
+            if x == xm3 {
+                i += 8;
+                break;
+            }
+        }
+        if y == ym3 {
+            i += 3;
+            break;
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn emboss(dest_pointer: *mut u8, width: usize, height: usize) {
+    // pixels are stored in RGBA, so each pixel is 4 bytes
+    let byte_size = width * height * 4;
+    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
+
+    let kernel: Array2<f32> = arr2(&[
+        [-2., -1., 0.],
+        [-1., 1., 1.],
+        [0., 1., 2.]
+    ]);
+
+    let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    let rgba = Array::from(v);
+    let m = rgba.into_shape((height, width, 4)).unwrap();
+
+    let ym3 = height - 3;
+    let xm3 = width - 3;
+    let mut i = 0;
+    for y in 0..height {
+        for x in 0..width {
+            let r = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum() as u8;
+            let g = (m.slice(s![y..y+3, x..x+3, 1]).to_owned() * &kernel).sum() as u8;
+            let b = (m.slice(s![y..y+3, x..x+3, 2]).to_owned() * &kernel).sum() as u8;
+
+            dest[i] = r;
+            dest[i + 1] = g;
+            dest[i + 2] = b;
+            i += 4;
+
+            if x == xm3 {
+                i += 8;
+                break;
+            }
+        }
+        if y == ym3 {
+            i += 3;
+            break;
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize) {
@@ -46,35 +131,66 @@ pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize) {
     let byte_size = width * height * 4;
     let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
 
-    let vertical_filter: Array2<f32> = arr2(&[
+    let kernel: Array2<f32> = arr2(&[
         [1., 2., 1.],
         [0., 0., 0.],
         [-1., -2., -1.]
     ]);
 
-    let rgba: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    let rgba = Array::from(v);
+    let m = rgba.into_shape((height, width, 4)).unwrap();
 
     let ym3 = height - 3;
     let xm3 = width - 3;
     let mut i = 0;
     for y in 0..height {
-        let row_size = 4 * width;
-        let begin = y * row_size;
-        let end = begin + row_size;
-
-        let m = Array::from(rgba[begin..end + row_size + row_size].to_vec());
-        let m1 = m.into_shape((3, width, 4)).unwrap();
-
         for x in 0..width {
-            let mr: Array2<f32> = m1.slice(s![0..3, x..x+3, 0]).to_owned();
-            let mra = mr * &vertical_filter;
-            let mul: f32 = mra.sum();
+            let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
 
-            let squared = mul.powf(2.) as u8;
+            let squared = rval.powf(2.) as u8;
             dest[i] = squared;
             dest[i + 1] = squared;
             dest[i + 2] = squared;
             dest[i + 3] = 255;
+            i += 4;
+
+            if x == xm3 {
+                i += 8;
+                break;
+            }
+        }
+        if y == ym3 {
+            i += 3;
+            break;
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize) {
+    // pixels are stored in RGBA, so each pixel is 4 bytes
+    let byte_size = width * height * 4;
+    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
+
+    let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    let rgba = Array::from(v);
+    let m = rgba.into_shape((height, width, 4)).unwrap();
+
+    let ym3 = height - 3;
+    let xm3 = width - 3;
+    let mut i = 0;
+    for y in 0..height {
+        for x in 0..width {
+            let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).sum() / 9.;
+            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).sum() / 9.;
+            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
+            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
+
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            dest[i + 3] = aval as u8;
             i += 4;
 
             if x == xm3 {

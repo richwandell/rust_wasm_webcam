@@ -1,21 +1,39 @@
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useRef} from "react";
 import css from './cam.module.css'
 
 function Cam() {
     let canvas = useRef<HTMLCanvasElement>(null)
     let video = useRef<HTMLVideoElement>(null)
     let sobelButton = useRef<HTMLButtonElement>(null)
+    let boxBlurButton = useRef<HTMLButtonElement>(null)
+    let sharpenButton = useRef<HTMLButtonElement>(null)
+    let embossButton = useRef<HTMLButtonElement>(null)
 
 
     useEffect(() => {
         if (canvas === null) return;
         if (video.current === null) return;
         if (sobelButton.current === null) return;
+        if (boxBlurButton.current === null) return;
+        if (sharpenButton.current === null) return;
+        if (embossButton.current === null) return;
 
         let effect = 0;
 
         sobelButton.current.addEventListener("click", () => {
             effect = effect === 1 ? 0 : 1
+        })
+
+        boxBlurButton.current.addEventListener("click", () => {
+            effect = effect === 2 ? 0 : 2
+        })
+
+        sharpenButton.current.addEventListener("click", () => {
+            effect = effect === 3 ? 0 : 3
+        })
+
+        embossButton.current.addEventListener("click", () => {
+            effect = effect === 4 ? 0 : 4
         })
 
         let ctx: CanvasRenderingContext2D | null,
@@ -36,36 +54,55 @@ function Cam() {
                 canvas.current.width = width;
                 canvas.current.height = height;
 
-                ctx?.drawImage(video.current, 0, 0, width, height);
-                if (effect === 1) {
-                    if (canvas.current.width > 0) {
-                        if (canvas.current && pointer === -1) {
-                            canvas.current.width = width;
-                            canvas.current.height = height;
-                            const byteSize = width * height * 4;
-                            // @ts-ignore
-                            pointer = wasm.alloc(byteSize);
-                        } else if (canvas.current && ctx) {
-                            let imageData = ctx.getImageData(0, 0, width, height);
-                            //@ts-ignore
-                            memcopy(imageData.data.buffer, wasm.memory.buffer, pointer)
-                            //@ts-ignore
-                            wasm.sobel(pointer, width, height)
-                            //@ts-ignore
-                            const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
-                            const imageDataUpdated = new ImageData(data, width, height);
-                            ctx.putImageData(imageDataUpdated, 0, 0)
-                        }
-                    }
-                }
                 if (ticks % 5 === 0) {
-                    let fps = (1000 / (time - lastTime)).toFixed(2);
                     //@ts-ignore
-                    document.querySelector("#fps").innerHTML = fps;
+                    document.querySelector("#fps").innerHTML = (1000 / (time - lastTime)).toFixed(2);
                 }
                 ticks += 1;
                 if (ticks > 5) ticks = 0;
                 lastTime = time;
+
+                if (canvas.current.width > 0 && canvas.current && pointer === -1) {
+                    canvas.current.width = width;
+                    canvas.current.height = height;
+                    const byteSize = width * height * 4;
+                    // @ts-ignore
+                    pointer = wasm.alloc(byteSize);
+                    return requestAnimationFrame(drawToCanvas)
+                }
+
+                ctx?.drawImage(video.current, 0, 0, width, height);
+                if (effect === 0) return requestAnimationFrame(drawToCanvas);
+
+
+                if (canvas.current.width > 0 && canvas.current && ctx) {
+                    let imageData = ctx.getImageData(0, 0, width, height);
+                    //@ts-ignore
+                    memcopy(imageData.data.buffer, wasm.memory.buffer, pointer)
+                    switch (effect) {
+                        case 1:
+                            //@ts-ignore
+                            wasm.sobel(pointer, width, height)
+                            break;
+                        case 2:
+                            //@ts-ignore
+                            wasm.box_blur(pointer, width, height)
+                            break;
+                        case 3:
+                            //@ts-ignore
+                            wasm.sharpen(pointer, width, height)
+                            break;
+                        case 4:
+                            //@ts-ignore
+                            wasm.emboss(pointer, width, height)
+                            break;
+                    }
+
+                    //@ts-ignore
+                    const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
+                    const imageDataUpdated = new ImageData(data, width, height);
+                    ctx.putImageData(imageDataUpdated, 0, 0)
+                }
                 requestAnimationFrame(drawToCanvas)
             }
         }
@@ -96,7 +133,10 @@ function Cam() {
         <div className={css.flex}>
             <div className={css.sideDiv}>
                 <ul className={css.buttonList}>
-                    <button ref={sobelButton}>Sobel Edge Detection</button>
+                    <li><button ref={sobelButton}>Sobel Edge Detection</button></li>
+                    <li><button ref={boxBlurButton}>Box Blur</button></li>
+                    <li><button ref={sharpenButton}>Sharpen</button></li>
+                    <li><button ref={embossButton}>Emboss</button></li>
                 </ul>
             </div>
             <canvas ref={canvas} > </canvas>
