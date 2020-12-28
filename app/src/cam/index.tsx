@@ -8,6 +8,7 @@ function Cam() {
     let boxBlurButton = useRef<HTMLButtonElement>(null)
     let sharpenButton = useRef<HTMLButtonElement>(null)
     let embossButton = useRef<HTMLButtonElement>(null)
+    let laplacianButton = useRef<HTMLButtonElement>(null)
 
 
     useEffect(() => {
@@ -17,6 +18,7 @@ function Cam() {
         if (boxBlurButton.current === null) return;
         if (sharpenButton.current === null) return;
         if (embossButton.current === null) return;
+        if (laplacianButton.current === null) return;
 
         let effect = 0;
 
@@ -34,6 +36,10 @@ function Cam() {
 
         embossButton.current.addEventListener("click", () => {
             effect = effect === 4 ? 0 : 4
+        })
+
+        laplacianButton.current.addEventListener("click", () => {
+            effect = effect === 5 ? 0 : 5
         })
 
         let ctx: CanvasRenderingContext2D | null,
@@ -96,6 +102,10 @@ function Cam() {
                             //@ts-ignore
                             wasm.emboss(pointer, width, height)
                             break;
+                        case 5:
+                            //@ts-ignore
+                            wasm.laplacian(pointer, width, height)
+                            break;
                     }
 
                     //@ts-ignore
@@ -137,6 +147,7 @@ function Cam() {
                     <li><button ref={boxBlurButton}>Box Blur</button></li>
                     <li><button ref={sharpenButton}>Sharpen</button></li>
                     <li><button ref={embossButton}>Emboss</button></li>
+                    <li><button ref={laplacianButton}>Laplacian</button></li>
                 </ul>
             </div>
             <canvas ref={canvas} > </canvas>
