@@ -1,6 +1,5 @@
 import logo from './WebAssembly_Logo.svg';
 import './App.css';
-import {useEffect} from "react";
 import Cam from "./cam";
 
 function App() {
