@@ -1,0 +1,1 @@
+{"version":3,"sources":["worker.js"],"names":["console","log"],"mappings":"oGAAAA,QAAQC,IAAI,U","file":"static/js/worker.c6036202.chunk.js","sourcesContent":["console.log(\"rich\")"],"sourceRoot":""}

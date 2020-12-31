@@ -35,7 +35,7 @@ export default function Cam(
         lastTime = Infinity,
         ticks = 0,
         effect = 0,
-        workers: Worker[],
+        workers: Worker[] = [],
         numJobs = 0;
 
     function allocateMemory(width: number, height: number) {
@@ -93,8 +93,10 @@ export default function Cam(
         for (let i = 0; i < navigator.hardwareConcurrency; i++) {
             const worker = new Worker("worker.js");
             worker.onmessage = workerMesageRecieved;
+            worker.postMessage({data: {}})
             workers.push(worker);
         }
+        drawToCanvas(new Date().getTime())
     }
 
     function camLoaded(stream: MediaStream) {
@@ -104,8 +106,7 @@ export default function Cam(
         if (video.current) {
             video.current.srcObject = stream;
         }
-
-        drawToCanvas(new Date().getTime())
+        createWorkers();
     }
 
     function wasmLoaded(native: Wasm) {
