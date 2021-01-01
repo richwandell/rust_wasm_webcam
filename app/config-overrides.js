@@ -18,8 +18,7 @@ module.exports = function override(config, env) {
             crateDirectory: path.resolve(__dirname, "../rust"),
             extraArgs: "--no-typescript",
             outDir: path.resolve(__dirname, "../rust/pkg"),
-            forceMode: "production",
-            outName: "file.wasm"
+            forceMode: "production"
         }),
     ]);
 

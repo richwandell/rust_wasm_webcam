@@ -16,6 +16,24 @@ mod utils;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
+extern "C" {
+    // Use `js_namespace` here to bind `console.log(..)` instead of just
+    // `log(..)`
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+
+    // The `console.log` is quite polymorphic, so we can bind it with multiple
+    // signatures. Note that we need to use `js_name` to ensure we always call
+    // `log` in JS.
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_u8(a: u8);
+
+    // Multiple arguments too!
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_many(a: &str, b: &str);
+}
+
+#[wasm_bindgen]
 extern {
     fn alert(s: &str);
 }
@@ -39,7 +57,6 @@ pub fn dealloc(ptr: *mut c_void, cap: usize) {
         let _buf = Vec::from_raw_parts(ptr, 0, cap);
     }
 }
-
 
 #[wasm_bindgen]
 pub fn sharpen(dest_pointer: *mut u8, width: usize, height: usize) {
@@ -168,29 +185,45 @@ pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize) {
 }
 
 #[wasm_bindgen]
-pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize) {
+pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
     let byte_size = width * height * 4;
     let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
 
+    unsafe {
+        log_u8(*dest_pointer.clone());
+    }
+
+    // let row_byte_num = width * 4;
+    let chunk_size = (height / total_threads) as usize;
+    let extra = height - (chunk_size * total_threads);
+    //
+    //
+    // let mut start_byte = row_byte_num * chunk_size * thread_num;
+    // let mut end_byte = row_byte_num * chunk_size * (thread_num + 1);
+    // // let new_height = end_row - start_row;
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
     let rgba = Array::from(v);
     let m = rgba.into_shape((height, width, 4)).unwrap();
-
+    //
     let ym3 = height - 3;
     let xm3 = width - 3;
-    let mut i = 0;
-    for y in 0..height {
-        for x in 0..width {
-            let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).sum() / 9.;
-            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).sum() / 9.;
-            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
-            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
 
-            dest[i] = rval as u8;
-            dest[i + 1] = gval as u8;
-            dest[i + 2] = bval as u8;
-            dest[i + 3] = aval as u8;
+    let start_row = chunk_size * thread_num;
+    let end_row = start_row + chunk_size;
+
+    let mut i = 4 * width * start_row;
+    for y in start_row..end_row {
+        for x in 0..width {
+            // let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).sum() / 9.;
+            // let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).sum() / 9.;
+            // let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
+            // let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
+
+            dest[i] = 0 as u8;
+            dest[i + 1] = 0 as u8;
+            dest[i + 2] = 0 as u8;
+            dest[i + 3] = 0 as u8;
             i += 4;
 
             if x == xm3 {

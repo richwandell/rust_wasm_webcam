@@ -1,16 +1,7 @@
 import React from "react";
-
-interface Wasm  {
-    memory: {
-        buffer: SharedArrayBuffer
-    }
-    alloc(bytes: number): number
-    sobel(pointer: number, width: number, height: number): void
-    box_blur(pointer: number, width: number, height: number): void
-    sharpen(pointer: number, width: number, height: number): void
-    emboss(pointer: number, width: number, height: number): void
-    laplacian(pointer: number, width: number, height: number): void
-}
+//@ts-ignore
+import worker from 'workerize-loader!./worker'; // eslint-disable-line import/no-webpack-loader-syntax
+import {Wasm} from './camera';
 
 export default function Cam(
     canvas: React.RefObject<HTMLCanvasElement>,
@@ -35,7 +26,10 @@ export default function Cam(
         lastTime = Infinity,
         ticks = 0,
         effect = 0,
-        workers: Worker[] = [],
+        workers: Wasm[] = [],
+        workersFinished = 0,
+        width = 0,
+        height = 0,
         numJobs = 0;
 
     function allocateMemory(width: number, height: number) {
@@ -50,8 +44,8 @@ export default function Cam(
     function drawToCanvas(time: number) {
         if (!(video.current && canvas.current)) return;
         drawFps(time)
-        const width = video.current.videoWidth;
-        const height = video.current.videoHeight;
+        width = video.current.videoWidth;
+        height = video.current.videoHeight;
         // do we need to allocate memory?
         if (width > 0 && canvas.current && pointer === -1) return allocateMemory(width, height)
         // draw webcam to canvas
@@ -66,7 +60,9 @@ export default function Cam(
                 wasm.sobel(pointer, width, height)
                 break;
             case 2:
-                wasm.box_blur(pointer, width, height)
+                for(let i = 0; i < workers.length; i++) {
+                    workers[i].box_blur(pointer, width, height, i, navigator.hardwareConcurrency)
+                }
                 break;
             case 3:
                 wasm.sharpen(pointer, width, height)
@@ -78,25 +74,42 @@ export default function Cam(
                 wasm.laplacian(pointer, width, height)
                 break;
         }
-        const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
-        const imageDataUpdated = new ImageData(data, width, height);
-        ctx.putImageData(imageDataUpdated, 0, 0)
-
-        requestAnimationFrame(drawToCanvas)
+        // const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
+        // const imageDataUpdated = new ImageData(data, width, height);
+        // ctx.putImageData(imageDataUpdated, 0, 0)
+        //
+        // requestAnimationFrame(drawToCanvas)
     }
 
-    function workerMesageRecieved(e: MessageEvent) {
+    function workerMesageRecieved(message: MessageEvent) {
+        if (message.data.type) return;
 
+        if (message.data.loaded && workersFinished === navigator.hardwareConcurrency - 1) {
+            workersFinished = 0;
+            drawToCanvas(new Date().getTime())
+        } else if (message.data.loaded) {
+            workersFinished += 1;
+        } else if (message.data.workerFinished && workersFinished === navigator.hardwareConcurrency - 1) {
+            console.log("workers are all finished")
+            workersFinished = 0;
+            const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
+            const imageDataUpdated = new ImageData(data, width, height);
+            ctx?.putImageData(imageDataUpdated, 0, 0)
+
+            requestAnimationFrame(drawToCanvas)
+        } else if (message.data.workerFinished) {
+            workersFinished += 1;
+        }
     }
 
     function createWorkers() {
+
         for (let i = 0; i < navigator.hardwareConcurrency; i++) {
-            const worker = new Worker("worker.js");
-            worker.onmessage = workerMesageRecieved;
-            worker.postMessage({data: {}})
-            workers.push(worker);
+            const workerInstance = worker()
+            workerInstance.addEventListener('message', workerMesageRecieved)
+            workerInstance.loadWasm()
+            workers.push(workerInstance)
         }
-        drawToCanvas(new Date().getTime())
     }
 
     function camLoaded(stream: MediaStream) {
@@ -106,7 +119,8 @@ export default function Cam(
         if (video.current) {
             video.current.srcObject = stream;
         }
-        createWorkers();
+
+        createWorkers()
     }
 
     function wasmLoaded(native: Wasm) {
