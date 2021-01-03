@@ -10,7 +10,7 @@ matrix:
     - rust: nightly
       env: RUST_BACKTRACE=1
       before_install:
-        - npm install -g n
+        - sudo npm install -g n
         - sudo n latest
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
