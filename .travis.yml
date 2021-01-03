@@ -12,7 +12,7 @@ matrix:
       before_install:
         - sudo apt purge nodejs npm
         - curl -sL https://deb.nodesource.com/setup_15.x | sudo -E bash -
-        - sudo apt-get install -y nodejs npm
+        - sudo apt-get install -y nodejs
         - node -v
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
