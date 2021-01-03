@@ -10,9 +10,10 @@ matrix:
     - rust: nightly
       env: RUST_BACKTRACE=1
       before_install:
-        - sudo npm cache clean -f
-        - sudo npm install -g n
-        - sudo n stable
+        - sudo apt purge nodejs npm
+        - curl -sL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+        - sudo apt-get install -y nodejs npm
+        - node -v
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
