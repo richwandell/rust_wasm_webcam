@@ -141,10 +141,58 @@ pub fn emboss(dest_pointer: *mut u8, width: usize, height: usize) {
 }
 
 #[wasm_bindgen]
-pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize) {
+pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
+    // pixels are stored in RGBA, so each pixel is 4 bytes
+    // let byte_size = width * height * 4;
+    // let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
+    //
+    // let chunk_size = (height / total_threads) as usize;
+    // let extra = height - (chunk_size * total_threads);
+    //
+    // let kernel: Array2<f32> = arr2(&[
+    //     [1., 2., 1.],
+    //     [0., 0., 0.],
+    //     [-1., -2., -1.]
+    // ]);
+    //
+    // let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+    // let rgba = Array::from(v);
+    // let m = rgba.into_shape((height, width, 4)).unwrap();
+    //
+    // let ym3 = height - 3;
+    // let xm3 = width - 3;
+    // let start_row = chunk_size * thread_num;
+    // let end_row = start_row + chunk_size;
+    // let mut i = 4 * width * start_row;
+    // for y in start_row..end_row {
+    //     for x in 0..width {
+    //         let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
+    //
+    //         let squared = rval.powf(2.) as u8;
+    //         dest[i] = squared;
+    //         dest[i + 1] = squared;
+    //         dest[i + 2] = squared;
+    //         dest[i + 3] = 255;
+    //         i += 4;
+    //
+    //         if x == xm3 {
+    //             i += 8;
+    //             break;
+    //         }
+    //     }
+    //     if y == ym3 {
+    //         i += 3;
+    //         break;
+    //     }
+    // }
+
+
     // pixels are stored in RGBA, so each pixel is 4 bytes
     let byte_size = width * height * 4;
     let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
+
+    let chunk_size = (height / total_threads) as usize;
+    let extra = height - (chunk_size * total_threads);
 
     let kernel: Array2<f32> = arr2(&[
         [1., 2., 1.],
@@ -158,16 +206,25 @@ pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize) {
 
     let ym3 = height - 3;
     let xm3 = width - 3;
-    let mut i = 0;
-    for y in 0..height {
-        for x in 0..width {
-            let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
 
-            let squared = rval.powf(2.) as u8;
-            dest[i] = squared;
-            dest[i + 1] = squared;
-            dest[i + 2] = squared;
-            dest[i + 3] = 255;
+    let start_row = chunk_size * thread_num;
+    let end_row = start_row + chunk_size;
+
+    let mut i = 4 * width * start_row;
+    for y in start_row..end_row {
+        for x in 0..width {
+            let mut a = dest[i];
+            a = a * dest[y * x * 4]
+            dest[i] = dest[i]
+            let rval: f32 = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
+            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).to_owned().sum() / 9.;
+            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
+            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
+
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            dest[i + 3] = aval as u8;
             i += 4;
 
             if x == xm3 {
@@ -188,18 +245,13 @@ pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: 
     let byte_size = width * height * 4;
     let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
 
-    // let row_byte_num = width * 4;
     let chunk_size = (height / total_threads) as usize;
     let extra = height - (chunk_size * total_threads);
-    //
-    //
-    // let mut start_byte = row_byte_num * chunk_size * thread_num;
-    // let mut end_byte = row_byte_num * chunk_size * (thread_num + 1);
-    // // let new_height = end_row - start_row;
+
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
     let rgba = Array::from(v);
     let m = rgba.into_shape((height, width, 4)).unwrap();
-    //
+
     let ym3 = height - 3;
     let xm3 = width - 3;
 
@@ -209,15 +261,15 @@ pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: 
     let mut i = 4 * width * start_row;
     for y in start_row..end_row {
         for x in 0..width {
-            // let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).sum() / 9.;
-            // let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).sum() / 9.;
-            // let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
-            // let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
+            let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).to_owned().sum() / 9.;
+            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).to_owned().sum() / 9.;
+            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
+            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
 
-            dest[i] = 0 as u8;
-            dest[i + 1] = 0 as u8;
-            dest[i + 2] = 0 as u8;
-            dest[i + 3] = 0 as u8;
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            dest[i + 3] = aval as u8;
             i += 4;
 
             if x == xm3 {

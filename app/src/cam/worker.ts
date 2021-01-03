@@ -12,13 +12,14 @@ export function box_blur(pointer: number, width: number, height: number, start_r
     postMessage({workerFinished: true})
 }
 
-export async function loadWasm() {
-    //eslint-disable-next-line
-    let fileParts = location.href.split("/")
-    //eslint-disable-next-line
-    let srcPath = location.href.replace(fileParts[fileParts.length - 1], "pkg/index_bg.wasm")
+export function sobel(pointer: number, width: number, height: number, start_row: number, end_row: number) {
+    wasm.sobel(pointer, width, height, start_row, end_row)
+    postMessage({workerFinished: true})
+}
+
+export async function loadWasm(wasmSrc: string) {
     //@ts-ignore
-    wasm = await wasm_bindgen(srcPath);
+    wasm = await wasm_bindgen(wasmSrc);
 
     postMessage({loaded: true})
 }

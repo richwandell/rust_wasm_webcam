@@ -1,18 +1,16 @@
 {
   "files": {
     "main.css": "/static/css/main.9dfa86c1.chunk.css",
-    "main.js": "/static/js/main.f683cf93.chunk.js",
-    "main.js.map": "/static/js/main.f683cf93.chunk.js.map",
-    "runtime-main.js": "/static/js/runtime-main.7086c470.js",
-    "runtime-main.js.map": "/static/js/runtime-main.7086c470.js.map",
-    "static/js/2.c3d7aa34.chunk.js": "/static/js/2.c3d7aa34.chunk.js",
-    "static/js/2.c3d7aa34.chunk.js.map": "/static/js/2.c3d7aa34.chunk.js.map",
-    "static/js/3.40423b76.chunk.js": "/static/js/3.40423b76.chunk.js",
-    "static/js/3.40423b76.chunk.js.map": "/static/js/3.40423b76.chunk.js.map",
-    "static/js/4.b4ae8788.chunk.js": "/static/js/4.b4ae8788.chunk.js",
-    "static/js/4.b4ae8788.chunk.js.map": "/static/js/4.b4ae8788.chunk.js.map",
-    "dee7a1e608e52e3fc65a.worker.js": "/dee7a1e608e52e3fc65a.worker.js",
-    "dee7a1e608e52e3fc65a.worker.js.map": "/dee7a1e608e52e3fc65a.worker.js.map",
+    "main.js": "/static/js/main.dee30602.chunk.js",
+    "main.js.map": "/static/js/main.dee30602.chunk.js.map",
+    "runtime-main.js": "/static/js/runtime-main.2fe49b69.js",
+    "runtime-main.js.map": "/static/js/runtime-main.2fe49b69.js.map",
+    "static/js/2.329c42a8.chunk.js": "/static/js/2.329c42a8.chunk.js",
+    "static/js/2.329c42a8.chunk.js.map": "/static/js/2.329c42a8.chunk.js.map",
+    "static/js/3.221aadc8.chunk.js": "/static/js/3.221aadc8.chunk.js",
+    "static/js/3.221aadc8.chunk.js.map": "/static/js/3.221aadc8.chunk.js.map",
+    "bd6347b03758c9d098bd.worker.js": "/bd6347b03758c9d098bd.worker.js",
+    "bd6347b03758c9d098bd.worker.js.map": "/bd6347b03758c9d098bd.worker.js.map",
     "index.html": "/index.html",
     "pkg/.gitignore": "/pkg/.gitignore",
     "pkg/README.md": "/pkg/README.md",
@@ -22,13 +20,13 @@
     "pkg/index_bg.wasm.d.ts": "/pkg/index_bg.wasm.d.ts",
     "pkg/package.json": "/pkg/package.json",
     "static/css/main.9dfa86c1.chunk.css.map": "/static/css/main.9dfa86c1.chunk.css.map",
-    "static/js/2.c3d7aa34.chunk.js.LICENSE.txt": "/static/js/2.c3d7aa34.chunk.js.LICENSE.txt",
+    "static/js/2.329c42a8.chunk.js.LICENSE.txt": "/static/js/2.329c42a8.chunk.js.LICENSE.txt",
     "static/media/WebAssembly_Logo.1381587b.svg": "/static/media/WebAssembly_Logo.1381587b.svg"
   },
   "entrypoints": [
-    "static/js/runtime-main.7086c470.js",
-    "static/js/2.c3d7aa34.chunk.js",
+    "static/js/runtime-main.2fe49b69.js",
+    "static/js/2.329c42a8.chunk.js",
     "static/css/main.9dfa86c1.chunk.css",
-    "static/js/main.f683cf93.chunk.js"
+    "static/js/main.dee30602.chunk.js"
   ]
 }

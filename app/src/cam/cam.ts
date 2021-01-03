@@ -1,10 +1,13 @@
 import React from "react";
 //@ts-ignore
 import worker from 'workerize-loader!./worker'; // eslint-disable-line import/no-webpack-loader-syntax
-import {Wasm} from './camera';
+import {Wasm} from "./camera";
+
+declare function wasm_bindgen(script: string): void
 
 export default function Cam(
     canvas: React.RefObject<HTMLCanvasElement>,
+    hiddenCanvas: React.RefObject<HTMLCanvasElement>,
     video: React.RefObject<HTMLVideoElement>,
     sobelButton: React.RefObject<HTMLButtonElement>,
     boxBlurButton: React.RefObject<HTMLButtonElement>,
@@ -13,6 +16,7 @@ export default function Cam(
     laplacianButton: React.RefObject<HTMLButtonElement>
 ) {
     if (canvas.current === null) return;
+    if (hiddenCanvas.current === null) return;
     if (video.current === null) return;
     if (sobelButton.current === null) return;
     if (boxBlurButton.current === null) return;
@@ -21,6 +25,7 @@ export default function Cam(
     if (laplacianButton.current === null) return;
 
     let ctx: CanvasRenderingContext2D | null,
+        hctx: CanvasRenderingContext2D | null,
         wasm: Wasm,
         pointer = -1,
         lastTime = Infinity,
@@ -30,10 +35,22 @@ export default function Cam(
         workersFinished = 0,
         width = 0,
         height = 0,
-        numJobs = 0;
+        memory: {buffer: SharedArrayBuffer},
+        wasmSrc: string;
+
+    function makeWasmSrc() {
+        let fileParts = window.location.href.split("/")
+        if (fileParts[fileParts.length - 1] === "") fileParts.pop()
+        let srcPath = window.location.href.replace(
+            fileParts[fileParts.length - 1], fileParts[fileParts.length - 1] + "/pkg/index_bg.wasm")
+        if (srcPath[srcPath.length - 1] === "/") srcPath = srcPath.slice(0, -1)
+        wasmSrc = srcPath;
+    }
 
     function allocateMemory(width: number, height: number) {
-        if (!(video.current && canvas.current)) return;
+        if (!(video.current && canvas.current && hiddenCanvas.current)) return;
+        hiddenCanvas.current.width = width
+        hiddenCanvas.current.height = height
         canvas.current.width = width;
         canvas.current.height = height;
         const byteSize = width * height * 4;
@@ -42,20 +59,28 @@ export default function Cam(
     }
 
     function drawToCanvas(time: number) {
-        if (!(video.current && canvas.current)) return;
+        if (!(video.current && canvas.current && hiddenCanvas.current)) return;
         drawFps(time)
         width = video.current.videoWidth;
         height = video.current.videoHeight;
         // do we need to allocate memory?
         if (width > 0 && canvas.current && pointer === -1) return allocateMemory(width, height)
         // draw webcam to canvas
-        ctx?.drawImage(video.current, 0, 0, width, height);
+        hctx?.drawImage(video.current, 0, 0, width, height);
         // do we have no effect selected? is the canvas ready?
-        if (effect === 0 || !(width > 0 && canvas.current && ctx)) return requestAnimationFrame(drawToCanvas)
+        if (effect === 0 || !(width > 0 && canvas.current && ctx && hctx)) {
+            ctx?.drawImage(video.current, 0, 0, width, height);
+            return requestAnimationFrame(drawToCanvas)
+        }
         // get image data from the canvas
-        const imageData = ctx.getImageData(0, 0, width, height);
-        memcopy(imageData.data.buffer, wasm.memory.buffer, pointer)
+        const imageData = hctx.getImageData(0, 0, width, height);
+        memcopy(imageData.data.buffer, memory.buffer, pointer)
         switch (effect) {
+            case 1:
+                for(let i = 0; i < workers.length; i++) {
+                    workers[i].sobel(pointer, width, height, i, navigator.hardwareConcurrency)
+                }
+                break;
             case 2:
                 for(let i = 0; i < workers.length; i++) {
                     workers[i].box_blur(pointer, width, height, i, navigator.hardwareConcurrency)
@@ -75,7 +100,7 @@ export default function Cam(
         } else if (message.data.workerFinished && workersFinished === navigator.hardwareConcurrency - 1) {
             console.log("workers are all finished")
             workersFinished = 0;
-            const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
+            const data = new Uint8ClampedArray(memory.buffer, pointer, width * height * 4).slice(0);
             const imageDataUpdated = new ImageData(data, width, height);
             ctx?.putImageData(imageDataUpdated, 0, 0)
 
@@ -89,7 +114,7 @@ export default function Cam(
         for (let i = 0; i < navigator.hardwareConcurrency; i++) {
             const workerInstance = worker()
             workerInstance.addEventListener('message', workerMesageRecieved)
-            workerInstance.loadWasm()
+            workerInstance.loadWasm(wasmSrc)
             workers.push(workerInstance)
         }
     }
@@ -98,6 +123,9 @@ export default function Cam(
         if (canvas.current !== null) {
             ctx = canvas.current.getContext('2d');
         }
+        if (hiddenCanvas.current !== null) {
+            hctx = hiddenCanvas.current.getContext('2d')
+        }
         if (video.current) {
             video.current.srcObject = stream;
         }
@@ -105,8 +133,7 @@ export default function Cam(
         createWorkers()
     }
 
-    function wasmLoaded(native: Wasm) {
-        wasm = native;
+    function wasmLoaded() {
         if (navigator.mediaDevices.getUserMedia) {
             navigator.mediaDevices.getUserMedia({video: true})
                 .then(camLoaded)
@@ -116,7 +143,7 @@ export default function Cam(
         }
     }
 
-    function memcopy(b1: ArrayBufferLike, b2: SharedArrayBuffer, offset: number) {
+    function memcopy(b1: ArrayBufferLike, b2: ArrayBufferLike, offset: number) {
         new Uint8Array(b2, offset, b1.byteLength).set(new Uint8Array(b1));
     }
 
@@ -148,8 +175,15 @@ export default function Cam(
 
     laplacianButton.current.addEventListener("click", () => {
         effect = effect === 5 ? 0 : 5
-    })
+    });
 
-    //@ts-ignore
-    import('wasm_rust').then(wasmLoaded)
+    (async () => {
+        makeWasmSrc();
+        //@ts-ignore
+        wasm = await wasm_bindgen(wasmSrc);
+        //@ts-ignore
+        memory = wasm.__wbindgen_export_0;
+        wasmLoaded()
+    })();
+
 }
