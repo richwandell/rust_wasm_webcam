@@ -1,5 +1,5 @@
 language: rust
-sudo: false
+#sudo: false
 
 cache: cargo
 
@@ -9,11 +9,15 @@ matrix:
     # Builds on nightly.
     - rust: nightly
       env: RUST_BACKTRACE=1
+      before_install:
+        - curl -sL https://deb.nodesource.com/setup_13.x | sudo -E bash -
+        - sudo apt-get install -y nodejs
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
         - rustup component add rust-src
       script:
+        - node -v
         - cd rust && wasm-pack build
         - cd ../app && npm ci && npm run-script build
 
