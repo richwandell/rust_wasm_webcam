@@ -12,6 +12,7 @@ matrix:
       before_install:
         - curl -sL https://deb.nodesource.com/setup_13.x | sudo -E bash -
         - sudo apt-get install -y nodejs
+        - rm /usr/local/bin/node
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
