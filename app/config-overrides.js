@@ -22,7 +22,17 @@ module.exports = function override(config, env) {
             forceMode: "production"
         }),
         new CopyPlugin([
-            { from: path.resolve(__dirname, "../rust/pkg"), to: "pkg" },
+            {
+                from: "*",
+                to: "pkg",
+                context: path.resolve(__dirname, "../rust/pkg") + "/",
+                filter: (path) => {
+                    if (path.endsWith(".gitignore")) {
+                        return false;
+                    }
+                    return true;
+                }
+            },
         ]),
     ]);
 

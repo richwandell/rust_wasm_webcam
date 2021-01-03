@@ -1,0 +1,14 @@
+{
+  "name": "wasm_algorithms",
+  "collaborators": [
+    "Rich Wandell <richwandell@gmail.com>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "index_bg.wasm",
+    "index.js",
+    "index.d.ts"
+  ],
+  "browser": "index.js",
+  "types": "index.d.ts"
+}

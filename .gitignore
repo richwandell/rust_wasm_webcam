@@ -2,7 +2,7 @@ rust/target
 **/*.rs.bk
 Cargo.lock
 bin/
-pkg/
+/rust/pkg/
 wasm-pack.log
 
 
