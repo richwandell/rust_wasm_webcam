@@ -10,7 +10,8 @@ matrix:
     - rust: nightly
       env: RUST_BACKTRACE=1
       before_install:
-        - sudo apt-get --only-upgrade install nodejs
+        - npm install -g n
+        - n latest
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
