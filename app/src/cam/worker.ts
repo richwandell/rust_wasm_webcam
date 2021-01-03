@@ -1,30 +1,27 @@
-import {Wasm} from './camera';
+import {InitOutput} from 'wasm_rust';
 
 declare function postMessage(message: any): void;
+declare function importScripts(scriot: string): void;
 
-let threadNum: number
-let wasm: Wasm;
+importScripts("pkg/index.js")
+
+let wasm: InitOutput;
 
 export function box_blur(pointer: number, width: number, height: number, start_row: number, end_row: number) {
     wasm.box_blur(pointer, width, height, start_row, end_row)
     postMessage({workerFinished: true})
 }
 
-export function loadWasm(thread_num: number) {
-    threadNum = thread_num;
-    function wasmLoaded(native: Wasm) {
-        wasm = native;
-        postMessage({loaded: true})
-    }
+export async function loadWasm(memory: WebAssembly.Memory) {
+    //eslint-disable-next-line
+    let fileParts = location.href.split("/")
+    //eslint-disable-next-line
+    let srcPath = location.href.replace(fileParts[fileParts.length - 1], "pkg/index_bg.wasm")
+    //@ts-ignore
+    wasm = await wasm_bindgen(srcPath, memory);
+    postMessage({loaded: true})
+}
 
-    (async function() {
-        const wasm = await import('wasm_algos/index_bg.js')
-        const src = await import("wasm_algos/index_bg.wasm");
-
-
-
-    })()
-
-
+export function allocateImageMemory() {
 
 }

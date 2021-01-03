@@ -9,6 +9,12 @@ use wasm_bindgen::__rt::std::ops::Mul;
 
 mod utils;
 
+macro_rules! console_log {
+    ($($t:tt)*) => (crate::log(&format_args!($($t)*).to_string()))
+}
+
+mod pool;
+
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
 #[cfg(feature = "wee_alloc")]
@@ -17,21 +23,13 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
 extern "C" {
-    // Use `js_namespace` here to bind `console.log(..)` instead of just
-    // `log(..)`
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
-
-    // The `console.log` is quite polymorphic, so we can bind it with multiple
-    // signatures. Note that we need to use `js_name` to ensure we always call
-    // `log` in JS.
     #[wasm_bindgen(js_namespace = console, js_name = log)]
-    fn log_u8(a: u8);
-
-    // Multiple arguments too!
-    #[wasm_bindgen(js_namespace = console, js_name = log)]
-    fn log_many(a: &str, b: &str);
+    fn logv(x: &JsValue);
 }
+
+
 
 #[wasm_bindgen]
 extern {
@@ -189,10 +187,6 @@ pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: 
     // pixels are stored in RGBA, so each pixel is 4 bytes
     let byte_size = width * height * 4;
     let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    unsafe {
-        log_u8(*dest_pointer.clone());
-    }
 
     // let row_byte_num = width * 4;
     let chunk_size = (height / total_threads) as usize;

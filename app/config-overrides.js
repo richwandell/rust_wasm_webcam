@@ -1,5 +1,6 @@
 const path = require('path');
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
+const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = function override(config, env) {
     config.resolve.extensions.push(".wasm");
@@ -16,10 +17,13 @@ module.exports = function override(config, env) {
     config.plugins = (config.plugins || []).concat([
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, "../rust"),
-            extraArgs: "--no-typescript",
+            extraArgs: "--target no-modules",
             outDir: path.resolve(__dirname, "../rust/pkg"),
             forceMode: "production"
         }),
+        new CopyPlugin([
+            { from: path.resolve(__dirname, "../rust/pkg"), to: "pkg" },
+        ]),
     ]);
 
     return config;
