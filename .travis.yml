@@ -15,6 +15,7 @@ matrix:
 #        - cargo install-update -a
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
+        - rustup component add rust-src
       script:
         - cd rust
         - wasm-pack build
