@@ -6,6 +6,7 @@ import {Wasm} from "./camera";
 declare function wasm_bindgen(script: string): void
 
 export default function Cam(
+    sliderRef: React.RefObject<HTMLInputElement>,
     canvas: React.RefObject<HTMLCanvasElement>,
     hiddenCanvas: React.RefObject<HTMLCanvasElement>,
     video: React.RefObject<HTMLVideoElement>,
@@ -15,6 +16,7 @@ export default function Cam(
     embossButton: React.RefObject<HTMLButtonElement>,
     laplacianButton: React.RefObject<HTMLButtonElement>
 ) {
+    if (sliderRef.current === null) return;
     if (canvas.current === null) return;
     if (hiddenCanvas.current === null) return;
     if (video.current === null) return;
@@ -36,7 +38,9 @@ export default function Cam(
         width = 0,
         height = 0,
         memory: {buffer: SharedArrayBuffer},
-        wasmSrc: string;
+        wasmSrc: string,
+        numThreads = navigator.hardwareConcurrency,
+        numJobs = navigator.hardwareConcurrency;
 
     function makeWasmSrc() {
         let fileParts = window.location.href.split("/")
@@ -54,6 +58,7 @@ export default function Cam(
         canvas.current.width = width;
         canvas.current.height = height;
         const byteSize = width * height * 4;
+        //@ts-ignore
         pointer = wasm.alloc(byteSize);
         return requestAnimationFrame(drawToCanvas)
     }
@@ -75,15 +80,31 @@ export default function Cam(
         // get image data from the canvas
         const imageData = hctx.getImageData(0, 0, width, height);
         memcopy(imageData.data.buffer, memory.buffer, pointer)
+        numJobs = numThreads;
         switch (effect) {
             case 1:
-                for(let i = 0; i < workers.length; i++) {
-                    workers[i].sobel(pointer, width, height, i, navigator.hardwareConcurrency)
+                for(let i = 0; i < numThreads; i++) {
+                    workers[i].sobel(pointer, width, height, i, numThreads)
                 }
                 break;
             case 2:
-                for(let i = 0; i < workers.length; i++) {
-                    workers[i].box_blur(pointer, width, height, i, navigator.hardwareConcurrency)
+                for(let i = 0; i < numThreads; i++) {
+                    workers[i].box_blur(pointer, width, height, i, numThreads)
+                }
+                break;
+            case 3:
+                for(let i = 0; i < numThreads; i++) {
+                    workers[i].sharpen(pointer, width, height, i, numThreads)
+                }
+                break;
+            case 4:
+                for(let i = 0; i < numThreads; i++) {
+                    workers[i].emboss(pointer, width, height, i, numThreads)
+                }
+                break;
+            case 5:
+                for(let i = 0; i < numThreads; i++) {
+                    workers[i].laplacian(pointer, width, height, i, numThreads)
                 }
                 break;
         }
@@ -92,18 +113,16 @@ export default function Cam(
     function workerMesageRecieved(message: MessageEvent) {
         if (message.data.type) return;
 
-        if (message.data.loaded && workersFinished === navigator.hardwareConcurrency - 1) {
+        if (message.data.loaded && workersFinished === numJobs - 1) {
             workersFinished = 0;
             drawToCanvas(new Date().getTime())
         } else if (message.data.loaded) {
             workersFinished += 1;
-        } else if (message.data.workerFinished && workersFinished === navigator.hardwareConcurrency - 1) {
-            console.log("workers are all finished")
+        } else if (message.data.workerFinished && workersFinished === numJobs - 1) {
             workersFinished = 0;
             const data = new Uint8ClampedArray(memory.buffer, pointer, width * height * 4).slice(0);
             const imageDataUpdated = new ImageData(data, width, height);
             ctx?.putImageData(imageDataUpdated, 0, 0)
-
             requestAnimationFrame(drawToCanvas)
         } else if (message.data.workerFinished) {
             workersFinished += 1;
@@ -111,10 +130,10 @@ export default function Cam(
     }
 
     function createWorkers() {
-        for (let i = 0; i < navigator.hardwareConcurrency; i++) {
+        for (let i = 0; i < numThreads; i++) {
             const workerInstance = worker()
             workerInstance.addEventListener('message', workerMesageRecieved)
-            workerInstance.loadWasm(wasmSrc)
+            workerInstance.loadWasm(wasmSrc, memory)
             workers.push(workerInstance)
         }
     }
@@ -175,6 +194,13 @@ export default function Cam(
 
     laplacianButton.current.addEventListener("click", () => {
         effect = effect === 5 ? 0 : 5
+    });
+
+    sliderRef.current.addEventListener("input", (e) => {
+        //@ts-ignore
+        document.querySelector("#slider-concurrency").innerHTML = e.target.value;
+        //@ts-ignore
+        numThreads = Number(e.target.value)
     });
 
     (async () => {

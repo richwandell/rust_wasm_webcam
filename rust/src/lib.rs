@@ -6,6 +6,8 @@ use wasm_bindgen::__rt::core::{mem, slice};
 use wasm_bindgen::__rt::core::ffi::c_void;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::__rt::std::ops::Mul;
+use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
+use web_sys::{ErrorEvent, Event, Worker};
 
 mod utils;
 
@@ -13,7 +15,7 @@ macro_rules! console_log {
     ($($t:tt)*) => (crate::log(&format_args!($($t)*).to_string()))
 }
 
-mod pool;
+// mod pool;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -27,18 +29,6 @@ extern "C" {
     fn log(s: &str);
     #[wasm_bindgen(js_namespace = console, js_name = log)]
     fn logv(x: &JsValue);
-}
-
-
-
-#[wasm_bindgen]
-extern {
-    fn alert(s: &str);
-}
-
-#[wasm_bindgen]
-pub fn greet() {
-    alert("Hello, rich!");
 }
 
 #[wasm_bindgen]
@@ -57,85 +47,159 @@ pub fn dealloc(ptr: *mut c_void, cap: usize) {
 }
 
 #[wasm_bindgen]
-pub fn sharpen(dest_pointer: *mut u8, width: usize, height: usize) {
+pub fn sharpen(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
-    let byte_size = width * height * 4;
-    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    let kernel: Array2<f32> = arr2(&[
-        [0., -1., 0.],
-        [-1., 5., -1.],
-        [0., -1., 0.]
-    ]);
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let extra = height - (chunk_size * total_threads);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
 
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    let rgba = Array::from(v);
-    let m = rgba.into_shape((height, width, 4)).unwrap();
 
-    let ym3 = height - 3;
+    let ym3 = chunk_size - 3;
     let xm3 = width - 3;
     let mut i = 0;
-    for y in 0..height {
+    for y in 0..chunk_size {
         for x in 0..width {
-            let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
-            let gval = (m.slice(s![y..y+3, x..x+3, 1]).to_owned() * &kernel).sum();
-            let bval = (m.slice(s![y..y+3, x..x+3, 2]).to_owned() * &kernel).sum();
+            let mut y1: i32 = 0;
+            let mut y2: i32 = 0;
+            let mut y3: i32 = 0;
+            let mut x1: i32 = 0;
+            let mut x2: i32 = 0;
+            let mut x3: i32 = 0;
+            if y <= ym3 {
+                y1 = i as i32;
+                y2 = i as i32 + num_bytes_in_row as i32;
+                y3 = i as i32 + 2 * num_bytes_in_row as i32;
+            } else if y == ym3 + 1 {
+                y1 = i as i32 - num_bytes_in_row as i32;
+                y2 = i as i32;
+                y3 = i as i32 + num_bytes_in_row as i32;
+            } else {
+                y1 = i as i32 - 2 * num_bytes_in_row as i32;
+                y2 = i as i32 - num_bytes_in_row as i32;
+                y3 = i as i32;
+            }
+            if x <= xm3 {
+                x1 = 0;
+                x2 = 4;
+                x3 = 8;
+            } else if x == xm3 + 1 {
+                x1 = -4;
+                x2 = 0;
+                x3 = 4;
+            } else {
+                x1 = -8;
+                x2 = -4;
+                x3 = 0;
+            }
 
+            let rval =
+                  (v[(y1 + x1) as usize] * 0.) + (v[(y1 + x2) as usize] * -1.) + (v[(y1 + x3) as usize] * 0.)
+                + (v[(y2 + x1) as usize] * -1.) + (v[(y2 + x2) as usize] * 5.) + (v[(y2 + x3) as usize] * -1.)
+                + (v[(y3 + x1) as usize] * 0.) + (v[(y3 + x2) as usize] * -1.) + (v[(y3 + x3) as usize] * 0.);
+
+            let gval =
+                 (v[(y1 + x1 + 1) as usize] * 0.) + (v[(y1 + x2 + 1) as usize] * -1.) + (v[(y1 + x3 + 1) as usize] * 0.)
+               + (v[(y2 + x1 + 1) as usize] * -1.) + (v[(y2 + x2 + 1) as usize] * 5.) + (v[(y2 + x3 + 1) as usize] * -1.)
+               + (v[(y3 + x1 + 1) as usize] * 0.) + (v[(y3 + x2 + 1) as usize] * -1.) + (v[(y3 + x3 + 1) as usize] * 0.);
+
+            let bval =
+                (v[(y1 + x1 + 2) as usize] * 0.) + (v[(y1 + x2 + 2) as usize] * -1.) + (v[(y1 + x3 + 2) as usize] * 0.)
+              + (v[(y2 + x1 + 2) as usize] * -1.) + (v[(y2 + x2 + 2) as usize] * 5.) + (v[(y2 + x3 + 2) as usize] * -1.)
+              + (v[(y3 + x1 + 2) as usize] * 0.) + (v[(y3 + x2 + 2) as usize] * -1.) + (v[(y3 + x3 + 2) as usize] * 0.);
             dest[i] = rval as u8;
             dest[i + 1] = gval as u8;
             dest[i + 2] = bval as u8;
             i += 4;
-
-            if x == xm3 {
-                i += 8;
-                break;
-            }
-        }
-        if y == ym3 {
-            i += 3;
-            break;
         }
     }
 }
 
 #[wasm_bindgen]
-pub fn emboss(dest_pointer: *mut u8, width: usize, height: usize) {
+pub fn emboss(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
-    let byte_size = width * height * 4;
-    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    let kernel: Array2<f32> = arr2(&[
-        [-2., -1., 0.],
-        [-1., 1., 1.],
-        [0., 1., 2.]
-    ]);
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let extra = height - (chunk_size * total_threads);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
 
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    let rgba = Array::from(v);
-    let m = rgba.into_shape((height, width, 4)).unwrap();
 
-    let ym3 = height - 3;
+    let ym3 = chunk_size - 3;
     let xm3 = width - 3;
     let mut i = 0;
-    for y in 0..height {
+    for y in 0..chunk_size {
         for x in 0..width {
-            let r = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum() as u8;
-            let g = (m.slice(s![y..y+3, x..x+3, 1]).to_owned() * &kernel).sum() as u8;
-            let b = (m.slice(s![y..y+3, x..x+3, 2]).to_owned() * &kernel).sum() as u8;
-
-            dest[i] = r;
-            dest[i + 1] = g;
-            dest[i + 2] = b;
-            i += 4;
-
-            if x == xm3 {
-                i += 8;
-                break;
+            let mut y1: i32 = 0;
+            let mut y2: i32 = 0;
+            let mut y3: i32 = 0;
+            let mut x1: i32 = 0;
+            let mut x2: i32 = 0;
+            let mut x3: i32 = 0;
+            if y <= ym3 {
+                y1 = i as i32;
+                y2 = i as i32 + num_bytes_in_row as i32;
+                y3 = i as i32 + 2 * num_bytes_in_row as i32;
+            } else if y == ym3 + 1 {
+                y1 = i as i32 - num_bytes_in_row as i32;
+                y2 = i as i32;
+                y3 = i as i32 + num_bytes_in_row as i32;
+            } else {
+                y1 = i as i32 - 2 * num_bytes_in_row as i32;
+                y2 = i as i32 - num_bytes_in_row as i32;
+                y3 = i as i32;
             }
-        }
-        if y == ym3 {
-            i += 3;
-            break;
+            if x <= xm3 {
+                x1 = 0;
+                x2 = 4;
+                x3 = 8;
+            } else if x == xm3 + 1 {
+                x1 = -4;
+                x2 = 0;
+                x3 = 4;
+            } else {
+                x1 = -8;
+                x2 = -4;
+                x3 = 0;
+            }
+
+            let rval =
+                (v[(y1 + x1) as usize] * -2.) + (v[(y1 + x2) as usize] * -1.) + (v[(y1 + x3) as usize] * 0.)
+                    + (v[(y2 + x1) as usize] * -1.) + (v[(y2 + x2) as usize] * 1.) + (v[(y2 + x3) as usize] * 1.)
+                    + (v[(y3 + x1) as usize] * 0.) + (v[(y3 + x2) as usize] * 1.) + (v[(y3 + x3) as usize] * 2.);
+
+            let gval =
+                (v[(y1 + x1 + 1) as usize] * -2.) + (v[(y1 + x2 + 1) as usize] * -1.) + (v[(y1 + x3 + 1) as usize] * 0.)
+                    + (v[(y2 + x1 + 1) as usize] * -1.) + (v[(y2 + x2 + 1) as usize] * 1.) + (v[(y2 + x3 + 1) as usize] * 1.)
+                    + (v[(y3 + x1 + 1) as usize] * 0.) + (v[(y3 + x2 + 1) as usize] * 1.) + (v[(y3 + x3 + 1) as usize] * 2.);
+
+            let bval =
+                (v[(y1 + x1 + 2) as usize] * -2.) + (v[(y1 + x2 + 2) as usize] * -1.) + (v[(y1 + x3 + 2) as usize] * 0.)
+                    + (v[(y2 + x1 + 2) as usize] * -1.) + (v[(y2 + x2 + 2) as usize] * 1.) + (v[(y2 + x3 + 2) as usize] * 1.)
+                    + (v[(y3 + x1 + 2) as usize] * 0.) + (v[(y3 + x2 + 2) as usize] * 1.) + (v[(y3 + x3 + 2) as usize] * 2.);
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            i += 4;
         }
     }
 }
@@ -143,98 +207,75 @@ pub fn emboss(dest_pointer: *mut u8, width: usize, height: usize) {
 #[wasm_bindgen]
 pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
-    // let byte_size = width * height * 4;
-    // let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-    //
-    // let chunk_size = (height / total_threads) as usize;
-    // let extra = height - (chunk_size * total_threads);
-    //
-    // let kernel: Array2<f32> = arr2(&[
-    //     [1., 2., 1.],
-    //     [0., 0., 0.],
-    //     [-1., -2., -1.]
-    // ]);
-    //
-    // let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    // let rgba = Array::from(v);
-    // let m = rgba.into_shape((height, width, 4)).unwrap();
-    //
-    // let ym3 = height - 3;
-    // let xm3 = width - 3;
-    // let start_row = chunk_size * thread_num;
-    // let end_row = start_row + chunk_size;
-    // let mut i = 4 * width * start_row;
-    // for y in start_row..end_row {
-    //     for x in 0..width {
-    //         let rval = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
-    //
-    //         let squared = rval.powf(2.) as u8;
-    //         dest[i] = squared;
-    //         dest[i + 1] = squared;
-    //         dest[i + 2] = squared;
-    //         dest[i + 3] = 255;
-    //         i += 4;
-    //
-    //         if x == xm3 {
-    //             i += 8;
-    //             break;
-    //         }
-    //     }
-    //     if y == ym3 {
-    //         i += 3;
-    //         break;
-    //     }
-    // }
-
-
-    // pixels are stored in RGBA, so each pixel is 4 bytes
-    let byte_size = width * height * 4;
-    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    let chunk_size = (height / total_threads) as usize;
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
     let extra = height - (chunk_size * total_threads);
-
-    let kernel: Array2<f32> = arr2(&[
-        [1., 2., 1.],
-        [0., 0., 0.],
-        [-1., -2., -1.]
-    ]);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
 
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    let rgba = Array::from(v);
-    let m = rgba.into_shape((height, width, 4)).unwrap();
 
-    let ym3 = height - 3;
+    let ym3 = chunk_size - 3;
     let xm3 = width - 3;
-
-    let start_row = chunk_size * thread_num;
-    let end_row = start_row + chunk_size;
-
-    let mut i = 4 * width * start_row;
-    for y in start_row..end_row {
+    let mut i = 0;
+    for y in 0..chunk_size {
         for x in 0..width {
-            let mut a = dest[i];
-            a = a * dest[y * x * 4]
-            dest[i] = dest[i]
-            let rval: f32 = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum();
-            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).to_owned().sum() / 9.;
-            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
-            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
+            let mut y1: i32 = 0;
+            let mut y2: i32 = 0;
+            let mut y3: i32 = 0;
+            let mut x1: i32 = 0;
+            let mut x2: i32 = 0;
+            let mut x3: i32 = 0;
+            if y <= ym3 {
+                y1 = i as i32;
+                y2 = i as i32 + num_bytes_in_row as i32;
+                y3 = i as i32 + 2 * num_bytes_in_row as i32;
+            } else if y == ym3 + 1 {
+                y1 = i as i32 - num_bytes_in_row as i32;
+                y2 = i as i32;
+                y3 = i as i32 + num_bytes_in_row as i32;
+            } else {
+                y1 = i as i32 - 2 * num_bytes_in_row as i32;
+                y2 = i as i32 - num_bytes_in_row as i32;
+                y3 = i as i32;
+            }
+            if x <= xm3 {
+                x1 = 0;
+                x2 = 4;
+                x3 = 8;
+            } else if x == xm3 + 1 {
+                x1 = -4;
+                x2 = 0;
+                x3 = 4;
+            } else {
+                x1 = -8;
+                x2 = -4;
+                x3 = 0;
+            }
 
+            let rval =
+                (v[(y1 + x1) as usize] * 1.) + (v[(y1 + x2) as usize] * 2.) + (v[(y1 + x3) as usize] * 1.)
+                    + (v[(y3 + x1) as usize] * -1.) + (v[(y3 + x2) as usize] * -2.) + (v[(y3 + x3) as usize] * -1.);
+
+            let gval =
+                (v[(y1 + x1 + 1) as usize] * 1.) + (v[(y1 + x2 + 1) as usize] * 2.) + (v[(y1 + x3 + 1) as usize] * 1.)
+                    + (v[(y3 + x1 + 1) as usize] * -1.) + (v[(y3 + x2 + 1) as usize] * -2.) + (v[(y3 + x3 + 1) as usize] * -1.);
+
+            let bval =
+                (v[(y1 + x1 + 2) as usize] * 1.) + (v[(y1 + x2 + 2) as usize] * 2.) + (v[(y1 + x3 + 2) as usize] * 1.)
+                    + (v[(y3 + x1 + 2) as usize] * -1.) + (v[(y3 + x2 + 2) as usize] * -2.) + (v[(y3 + x3 + 2) as usize] * -1.);
             dest[i] = rval as u8;
             dest[i + 1] = gval as u8;
             dest[i + 2] = bval as u8;
-            dest[i + 3] = aval as u8;
             i += 4;
-
-            if x == xm3 {
-                i += 8;
-                break;
-            }
-        }
-        if y == ym3 {
-            i += 3;
-            break;
         }
     }
 }
@@ -242,86 +283,156 @@ pub fn sobel(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usi
 #[wasm_bindgen]
 pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
-    let byte_size = width * height * 4;
-    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    let chunk_size = (height / total_threads) as usize;
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
     let extra = height - (chunk_size * total_threads);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
 
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    let rgba = Array::from(v);
-    let m = rgba.into_shape((height, width, 4)).unwrap();
 
-    let ym3 = height - 3;
+    let ym3 = chunk_size - 3;
     let xm3 = width - 3;
-
-    let start_row = chunk_size * thread_num;
-    let end_row = start_row + chunk_size;
-
-    let mut i = 4 * width * start_row;
-    for y in start_row..end_row {
+    let mut i = 0;
+    for y in 0..chunk_size {
         for x in 0..width {
-            let rval: f32 = m.slice(s![y..y+3, x..x+3, 0]).to_owned().sum() / 9.;
-            let gval: f32 = m.slice(s![y..y+3, x..x+3, 1]).to_owned().sum() / 9.;
-            let bval: f32 = m.slice(s![y..y+3, x..x+3, 2]).sum() / 9.;
-            let aval: f32 = m.slice(s![y..y+3, x..x+3, 3]).sum() / 9.;
-
-            dest[i] = rval as u8;
-            dest[i + 1] = gval as u8;
-            dest[i + 2] = bval as u8;
-            dest[i + 3] = aval as u8;
-            i += 4;
-
-            if x == xm3 {
-                i += 8;
-                break;
+            let mut y1: i32 = 0;
+            let mut y2: i32 = 0;
+            let mut y3: i32 = 0;
+            let mut x1: i32 = 0;
+            let mut x2: i32 = 0;
+            let mut x3: i32 = 0;
+            if y <= ym3 {
+                y1 = i as i32;
+                y2 = i as i32 + num_bytes_in_row as i32;
+                y3 = i as i32 + 2 * num_bytes_in_row as i32;
+            } else if y == ym3 + 1 {
+                y1 = i as i32 - num_bytes_in_row as i32;
+                y2 = i as i32;
+                y3 = i as i32 + num_bytes_in_row as i32;
+            } else {
+                y1 = i as i32 - 2 * num_bytes_in_row as i32;
+                y2 = i as i32 - num_bytes_in_row as i32;
+                y3 = i as i32;
             }
-        }
-        if y == ym3 {
-            i += 3;
-            break;
+            if x <= xm3 {
+                x1 = 0;
+                x2 = 4;
+                x3 = 8;
+            } else if x == xm3 + 1 {
+                x1 = -4;
+                x2 = 0;
+                x3 = 4;
+            } else {
+                x1 = -8;
+                x2 = -4;
+                x3 = 0;
+            }
+
+            let rval =
+                (v[(y1 + x1) as usize]) + (v[(y1 + x2) as usize]) + (v[(y1 + x3) as usize])
+                    + (v[(y2 + x1) as usize]) + (v[(y2 + x2) as usize]) + (v[(y2 + x3) as usize])
+                    + (v[(y3 + x1) as usize]) + (v[(y3 + x2) as usize]) + (v[(y3 + x3) as usize]);
+
+            let gval =
+                (v[(y1 + x1 + 1) as usize]) + (v[(y1 + x2 + 1) as usize]) + (v[(y1 + x3 + 1) as usize])
+                    + (v[(y2 + x1 + 1) as usize]) + (v[(y2 + x2 + 1) as usize]) + (v[(y2 + x3 + 1) as usize])
+                    + (v[(y3 + x1 + 1) as usize]) + (v[(y3 + x2 + 1) as usize]) + (v[(y3 + x3 + 1) as usize]);
+
+            let bval =
+                (v[(y1 + x1 + 2) as usize]) + (v[(y1 + x2 + 2) as usize]) + (v[(y1 + x3 + 2) as usize])
+                    + (v[(y2 + x1 + 2) as usize]) + (v[(y2 + x2 + 2) as usize]) + (v[(y2 + x3 + 2) as usize])
+                    + (v[(y3 + x1 + 2) as usize]) + (v[(y3 + x2 + 2) as usize]) + (v[(y3 + x3 + 2) as usize]);
+            dest[i] = (rval / 9.) as u8;
+            dest[i + 1] = (gval / 9.) as u8;
+            dest[i + 2] = (bval / 9.) as u8;
+            i += 4;
         }
     }
 }
 
 #[wasm_bindgen]
-pub fn laplacian(dest_pointer: *mut u8, width: usize, height: usize) {
+pub fn laplacian(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
     // pixels are stored in RGBA, so each pixel is 4 bytes
-    let byte_size = width * height * 4;
-    let dest = unsafe { slice::from_raw_parts_mut(dest_pointer, byte_size) };
-
-    let kernel: Array2<f32> = arr2(&[
-        [0., 1., 0.],
-        [1., -4., 1.],
-        [0., 1., 0.]
-    ]);
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let extra = height - (chunk_size * total_threads);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
 
     let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
-    let rgba = Array::from(v);
-    let m = rgba.into_shape((height, width, 4)).unwrap();
 
-    let ym3 = height - 3;
+    let ym3 = chunk_size - 3;
     let xm3 = width - 3;
     let mut i = 0;
-    for y in 0..height {
+    for y in 0..chunk_size {
         for x in 0..width {
-            let r = (m.slice(s![y..y+3, x..x+3, 0]).to_owned() * &kernel).sum() as u8;
-            let g = (m.slice(s![y..y+3, x..x+3, 1]).to_owned() * &kernel).sum() as u8;
-            let b = (m.slice(s![y..y+3, x..x+3, 2]).to_owned() * &kernel).sum() as u8;
-
-            dest[i] = r;
-            dest[i + 1] = g;
-            dest[i + 2] = b;
-            i += 4;
-
-            if x == xm3 {
-                i += 8;
-                break;
+            let mut y1: i32 = 0;
+            let mut y2: i32 = 0;
+            let mut y3: i32 = 0;
+            let mut x1: i32 = 0;
+            let mut x2: i32 = 0;
+            let mut x3: i32 = 0;
+            if y <= ym3 {
+                y1 = i as i32;
+                y2 = i as i32 + num_bytes_in_row as i32;
+                y3 = i as i32 + 2 * num_bytes_in_row as i32;
+            } else if y == ym3 + 1 {
+                y1 = i as i32 - num_bytes_in_row as i32;
+                y2 = i as i32;
+                y3 = i as i32 + num_bytes_in_row as i32;
+            } else {
+                y1 = i as i32 - 2 * num_bytes_in_row as i32;
+                y2 = i as i32 - num_bytes_in_row as i32;
+                y3 = i as i32;
             }
-        }
-        if y == ym3 {
-            i += 3;
-            break;
+            if x <= xm3 {
+                x1 = 0;
+                x2 = 4;
+                x3 = 8;
+            } else if x == xm3 + 1 {
+                x1 = -4;
+                x2 = 0;
+                x3 = 4;
+            } else {
+                x1 = -8;
+                x2 = -4;
+                x3 = 0;
+            }
+            let rval =
+                (v[(y1 + x1) as usize] * 0.) + (v[(y1 + x2) as usize] * 1.) + (v[(y1 + x3) as usize] * 0.)
+                    + (v[(y2 + x1) as usize] * 1.) + (v[(y2 + x2) as usize] * -4.) + (v[(y2 + x3) as usize] * 1.)
+                    + (v[(y3 + x1) as usize] * 0.) + (v[(y3 + x2) as usize] * 1.) + (v[(y3 + x3) as usize] * 0.);
+
+            let gval =
+                (v[(y1 + x1 + 1) as usize] * 0.) + (v[(y1 + x2 + 1) as usize] * 1.) + (v[(y1 + x3 + 1) as usize] * 0.)
+                    + (v[(y2 + x1 + 1) as usize] * 1.) + (v[(y2 + x2 + 1) as usize] * -4.) + (v[(y2 + x3 + 1) as usize] * 1.)
+                    + (v[(y3 + x1 + 1) as usize] * 0.) + (v[(y3 + x2 + 1) as usize] * 1.) + (v[(y3 + x3 + 1) as usize] * 0.);
+
+            let bval =
+                (v[(y1 + x1 + 2) as usize] * 0.) + (v[(y1 + x2 + 2) as usize] * 1.) + (v[(y1 + x3 + 2) as usize] * 0.)
+                    + (v[(y2 + x1 + 2) as usize] * 1.) + (v[(y2 + x2 + 2) as usize] * -4.) + (v[(y2 + x3 + 2) as usize] * 1.)
+                    + (v[(y3 + x1 + 2) as usize] * 0.) + (v[(y3 + x2 + 2) as usize] * 1.) + (v[(y3 + x3 + 2) as usize] * 0.);
+            dest[i] = rval as u8;
+            dest[i + 1] = gval as u8;
+            dest[i + 2] = bval as u8;
+            i += 4;
         }
     }
 }
