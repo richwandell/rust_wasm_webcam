@@ -10,15 +10,11 @@ matrix:
     - rust: nightly
       env: RUST_BACKTRACE=1
       before_script:
-#        - (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update)
-#        - (test -x $HOME/.cargo/bin/cargo-generate || cargo install --vers "^0.2" cargo-generate)
-#        - cargo install-update -a
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
         - rustup component add rust-src
       script:
-        - cd rust
-        - wasm-pack build
-        - wasm-pack test --chrome --firefox --headless
+        - cd rust && wasm-pack build
+        - cd ../app && npm ci && npm run-script build
 
 
