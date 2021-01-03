@@ -1,3 +1,3 @@
-import * as wasm from "wasm_algos/index_bg.wasm";
-export * from "wasm_algos/index_bg";
+import * as wasm from "wasm_rust/index_bg.wasm";
+export * from "wasm_rust/index";
 export const memory = wasm.memory;

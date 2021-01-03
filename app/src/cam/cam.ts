@@ -21,6 +21,7 @@ export default function Cam(
     if (laplacianButton.current === null) return;
 
     let ctx: CanvasRenderingContext2D | null,
+        wasm: Wasm,
         pointer = -1,
         lastTime = Infinity,
         ticks = 0,
@@ -29,28 +30,31 @@ export default function Cam(
         workersFinished = 0,
         width = 0,
         height = 0,
-        numJobs = 0,
-        memory = new WebAssembly.Memory({
-            initial: 80,
-            maximum: 80,
-            //@ts-ignore
-            shared: true
-        });
+        numJobs = 0;
+
+    function allocateMemory(width: number, height: number) {
+        if (!(video.current && canvas.current)) return;
+        canvas.current.width = width;
+        canvas.current.height = height;
+        const byteSize = width * height * 4;
+        pointer = wasm.alloc(byteSize);
+        return requestAnimationFrame(drawToCanvas)
+    }
 
     function drawToCanvas(time: number) {
         if (!(video.current && canvas.current)) return;
         drawFps(time)
         width = video.current.videoWidth;
         height = video.current.videoHeight;
-        canvas.current.width = width;
-        canvas.current.height = height;
+        // do we need to allocate memory?
+        if (width > 0 && canvas.current && pointer === -1) return allocateMemory(width, height)
         // draw webcam to canvas
         ctx?.drawImage(video.current, 0, 0, width, height);
         // do we have no effect selected? is the canvas ready?
         if (effect === 0 || !(width > 0 && canvas.current && ctx)) return requestAnimationFrame(drawToCanvas)
         // get image data from the canvas
         const imageData = ctx.getImageData(0, 0, width, height);
-        memcopy(imageData.data.buffer, memory.buffer, pointer)
+        memcopy(imageData.data.buffer, wasm.memory.buffer, pointer)
         switch (effect) {
             case 2:
                 for(let i = 0; i < workers.length; i++) {
@@ -71,7 +75,7 @@ export default function Cam(
         } else if (message.data.workerFinished && workersFinished === navigator.hardwareConcurrency - 1) {
             console.log("workers are all finished")
             workersFinished = 0;
-            const data = new Uint8ClampedArray(memory.buffer, pointer, width * height * 4);
+            const data = new Uint8ClampedArray(wasm.memory.buffer, pointer, width * height * 4);
             const imageDataUpdated = new ImageData(data, width, height);
             ctx?.putImageData(imageDataUpdated, 0, 0)
 
@@ -85,7 +89,7 @@ export default function Cam(
         for (let i = 0; i < navigator.hardwareConcurrency; i++) {
             const workerInstance = worker()
             workerInstance.addEventListener('message', workerMesageRecieved)
-            workerInstance.loadWasm(memory)
+            workerInstance.loadWasm()
             workers.push(workerInstance)
         }
     }
@@ -101,7 +105,18 @@ export default function Cam(
         createWorkers()
     }
 
-    function memcopy(b1: ArrayBufferLike, b2: ArrayBuffer, offset: number) {
+    function wasmLoaded(native: Wasm) {
+        wasm = native;
+        if (navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({video: true})
+                .then(camLoaded)
+                .catch(function () {
+                    console.log("Something went wrong!");
+                });
+        }
+    }
+
+    function memcopy(b1: ArrayBufferLike, b2: SharedArrayBuffer, offset: number) {
         new Uint8Array(b2, offset, b1.byteLength).set(new Uint8Array(b1));
     }
 
@@ -135,11 +150,6 @@ export default function Cam(
         effect = effect === 5 ? 0 : 5
     })
 
-    if (navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({video: true})
-            .then(camLoaded)
-            .catch(function () {
-                console.log("Something went wrong!");
-            });
-    }
+    //@ts-ignore
+    import('wasm_rust').then(wasmLoaded)
 }

@@ -12,16 +12,14 @@ export function box_blur(pointer: number, width: number, height: number, start_r
     postMessage({workerFinished: true})
 }
 
-export async function loadWasm(memory: WebAssembly.Memory) {
+export async function loadWasm() {
     //eslint-disable-next-line
     let fileParts = location.href.split("/")
     //eslint-disable-next-line
     let srcPath = location.href.replace(fileParts[fileParts.length - 1], "pkg/index_bg.wasm")
     //@ts-ignore
-    wasm = await wasm_bindgen(srcPath, memory);
+    wasm = await wasm_bindgen(srcPath);
+
     postMessage({loaded: true})
 }
 
-export function allocateImageMemory() {
-
-}

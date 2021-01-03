@@ -1,6 +1,6 @@
 [target.wasm32-unknown-unknown]
 rustflags = [
-    "-C", "link-args=--import-memory",
+    "-C", "target-feature=+atomics,+bulk-memory",
 ]
 
 [unstable]

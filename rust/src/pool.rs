@@ -15,6 +15,7 @@ use web_sys::{ErrorEvent, Event, Worker};
 #[wasm_bindgen]
 pub struct WorkerPool {
     state: Rc<PoolState>,
+    script: String
 }
 
 struct PoolState {
@@ -39,8 +40,9 @@ impl WorkerPool {
     /// Returns any error that may happen while a JS web worker is created and a
     /// message is sent to it.
     #[wasm_bindgen(constructor)]
-    pub fn new(initial: usize) -> Result<WorkerPool, JsValue> {
+    pub fn new(initial: usize, script_location: String) -> Result<WorkerPool, JsValue> {
         let pool = WorkerPool {
+            script: script_location.to_string(),
             state: Rc::new(PoolState {
                 workers: RefCell::new(Vec::with_capacity(initial)),
                 callback: Closure::wrap(Box::new(|event: Event| {
@@ -74,7 +76,7 @@ impl WorkerPool {
         //   library, know what's going on?
         // * How do we not fetch a script N times? It internally then
         //   causes another script to get fetched N times...
-        let worker = Worker::new("./worker.js")?;
+        let worker = Worker::new(&self.script)?;
 
         // With a worker spun up send it the module/memory so it can start
         // instantiating the wasm module. Later it might receive further
