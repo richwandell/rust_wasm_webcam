@@ -23,7 +23,7 @@ matrix:
       deploy:
         provider: script
         edge: true
-        script: netlify deploy --dir=app/dist --prod
+        script: netlify deploy --dir=app/build --prod
         on:
           branch: master
 
