@@ -14,6 +14,7 @@ tfjsWasm.setWasmPaths(`https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-was
 declare function wasm_bindgen(script: string): void
 
 export default function Cam(
+    resolutionSelect: React.RefObject<HTMLSelectElement>,
     faceMeshButton: React.RefObject<HTMLButtonElement>,
     sliderRef: React.RefObject<HTMLInputElement>,
     canvas: React.RefObject<HTMLCanvasElement>,
@@ -25,16 +26,6 @@ export default function Cam(
     embossButton: React.RefObject<HTMLButtonElement>,
     laplacianButton: React.RefObject<HTMLButtonElement>
 ) {
-    if (faceMeshButton.current === null) return;
-    if (sliderRef.current === null) return;
-    if (canvas.current === null) return;
-    if (hiddenCanvas.current === null) return;
-    if (video.current === null) return;
-    if (sobelButton.current === null) return;
-    if (boxBlurButton.current === null) return;
-    if (sharpenButton.current === null) return;
-    if (embossButton.current === null) return;
-    if (laplacianButton.current === null) return;
 
     let ctx: CanvasRenderingContext2D | null,
         hctx: CanvasRenderingContext2D | null,
@@ -230,11 +221,11 @@ export default function Cam(
 
     function wasmLoaded() {
         if (navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({video: true})
+            navigator.mediaDevices.getUserMedia({video: {width: { min: 640 }, height: { min: 480 }}})
                 .then(camLoaded)
-                .catch(function () {
-                    console.log("Something went wrong!");
-                });
+                .catch(function (e) {
+                    console.log(e)
+                })
         }
     }
 
@@ -264,41 +255,123 @@ export default function Cam(
         document.querySelector("#slider-concurrency").innerHTML = Number(sliderRef.current.value);
     }
 
-    sobelButton.current.addEventListener("click", () => {
+    sobelButton.current?.addEventListener("click", () => {
         enableSlider()
         effect = effect === 1 ? 0 : 1
     })
 
-    boxBlurButton.current.addEventListener("click", () => {
+    boxBlurButton.current?.addEventListener("click", () => {
         enableSlider()
         effect = effect === 2 ? 0 : 2
     })
 
-    sharpenButton.current.addEventListener("click", () => {
+    sharpenButton.current?.addEventListener("click", () => {
         enableSlider()
         effect = effect === 3 ? 0 : 3
     })
 
-    embossButton.current.addEventListener("click", () => {
+    embossButton.current?.addEventListener("click", () => {
         enableSlider()
         effect = effect === 4 ? 0 : 4
     })
 
-    laplacianButton.current.addEventListener("click", () => {
+    laplacianButton.current?.addEventListener("click", () => {
         enableSlider()
         effect = effect === 5 ? 0 : 5
     });
 
-    faceMeshButton.current.addEventListener("click", () => {
+    faceMeshButton.current?.addEventListener("click", () => {
         disableSlider()
         effect = effect === 6 ? 0 : 6
     })
 
-    sliderRef.current.addEventListener("input", (e) => {
+    sliderRef.current?.addEventListener("input", (e) => {
         //@ts-ignore
         document.querySelector("#slider-concurrency").innerHTML = e.target.value;
         //@ts-ignore
         numThreads = Number(e.target.value)
+    })
+
+    resolutionSelect.current?.addEventListener("change", (e) => {
+
+        //@ts-ignore
+        if (e.target.value === "480p") {
+            navigator.mediaDevices.getUserMedia({video: {width: {min: 640}, height: {min: 480}}})
+                .then((stream) => {
+                    if (video.current) {
+                        video.current.srcObject = stream;
+                        //@ts-ignore
+                        wasm.dealloc(pointer)
+                        pointer = -1
+                    }
+                })
+                .catch(function (e) {
+                    console.log(e)
+                })
+        //@ts-ignore
+        } else if (e.target.value === "720p") {
+            navigator.mediaDevices.getUserMedia({video: {width: { min: 1280 }, height: { min: 720 }}})
+                .then((stream) => {
+                    if (video.current) {
+                        video.current.srcObject = stream;
+                        //@ts-ignore
+                        wasm.dealloc(pointer)
+                        pointer = -1
+                    }
+                })
+                .catch(function (error) {
+                    navigator.mediaDevices.getUserMedia({video: {width: {min: 640}, height: {min: 480}}})
+                        .then((stream) => {
+                            //@ts-ignore
+                            e.target.value = "480p"
+                            if (video.current) {
+                                video.current.srcObject = stream;
+                                //@ts-ignore
+                                wasm.dealloc(pointer)
+                                pointer = -1
+                            }
+                        })
+                        .catch(function (e) {
+                            console.log(e)
+                        })
+                })
+        } else {
+            navigator.mediaDevices.getUserMedia({video: {width: { min: 1920 }, height: { min: 1080 }}})
+                .then((stream) => {
+                    if (video.current) {
+                        video.current.srcObject = stream;
+                    }
+                })
+                .catch(function (error) {
+                    navigator.mediaDevices.getUserMedia({video: {width: { min: 1280 }, height: { min: 720 }}})
+                        .then((stream) => {
+                            //@ts-ignore
+                            e.target.value = "720p"
+                            if (video.current) {
+                                video.current.srcObject = stream;
+                                //@ts-ignore
+                                wasm.dealloc(pointer)
+                                pointer = -1
+                            }
+                        })
+                        .catch(function (error) {
+                            navigator.mediaDevices.getUserMedia({video: {width: {min: 640}, height: {min: 480}}})
+                                .then((stream) => {
+                                    //@ts-ignore
+                                    e.target.value = "480p"
+                                    if (video.current) {
+                                        video.current.srcObject = stream;
+                                        //@ts-ignore
+                                        wasm.dealloc(pointer)
+                                        pointer = -1
+                                    }
+                                })
+                                .catch(function (e) {
+                                    console.log(e)
+                                })
+                        })
+                })
+        }
     });
 
     (async () => {

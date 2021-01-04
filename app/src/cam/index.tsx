@@ -13,16 +13,37 @@ function Cam() {
     const laplacianButton = useRef<HTMLButtonElement>(null)
     const sliderRef = useRef<HTMLInputElement>(null)
     const faceMeshButton = useRef<HTMLButtonElement>(null)
+    const resolutionSelect = useRef<HTMLSelectElement>(null)
 
 
-    useEffect(() => cam(faceMeshButton, sliderRef, canvas, hiddenCanvas, video, sobelButton, boxBlurButton, sharpenButton, embossButton, laplacianButton),
-        [sobelButton, video, canvas])
+    useEffect(() => {
+        if (resolutionSelect.current === null) return;
+        if (faceMeshButton.current === null) return;
+        if (sliderRef.current === null) return;
+        if (canvas.current === null) return;
+        if (hiddenCanvas.current === null) return;
+        if (video.current === null) return;
+        if (sobelButton.current === null) return;
+        if (boxBlurButton.current === null) return;
+        if (sharpenButton.current === null) return;
+        if (embossButton.current === null) return;
+        if (laplacianButton.current === null) return;
+
+        cam(resolutionSelect, faceMeshButton, sliderRef, canvas, hiddenCanvas, video, sobelButton,
+                boxBlurButton, sharpenButton, embossButton, laplacianButton)
+    },[sobelButton, video, canvas])
 
     return (
         <>
             <div className={css.sliderContainer}>
                 <label>Concurrency: <span id={"slider-concurrency"} >{navigator.hardwareConcurrency}</span></label>
                 <input ref={sliderRef} type="range" max={navigator.hardwareConcurrency} min={1} className={css.slider} />
+                <label>Resolution: </label>
+                <select ref={resolutionSelect} defaultValue={"480p"}>
+                    <option value={"1080p"} >1920x1080</option>
+                    <option value={"720p"} >1280x720</option>
+                    <option value={"480p"} >640x480</option>
+                </select>
             </div>
         <div className={css.flex}>
             <div className={css.sideDiv}>

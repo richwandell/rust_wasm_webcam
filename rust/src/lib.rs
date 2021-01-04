@@ -285,13 +285,13 @@ pub fn box_blur(dest_pointer: *mut u8, width: usize, height: usize, thread_num: 
     // pixels are stored in RGBA, so each pixel is 4 bytes
     let num_bytes_in_row = width * 4;
     let mut chunk_size = (height / total_threads) as usize;
-    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let start_byte = num_bytes_in_row * chunk_size * thread_num;
     let extra = height - (chunk_size * total_threads);
     if thread_num == total_threads - 1 {
         chunk_size += extra;
     }
-    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
-    let mut dest = unsafe {
+    let end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let dest = unsafe {
         let start_pointer = dest_pointer.offset(start_byte as isize);
         let size = end_byte - start_byte;
         slice::from_raw_parts_mut(start_pointer, size)
@@ -364,13 +364,13 @@ pub fn laplacian(dest_pointer: *mut u8, width: usize, height: usize, thread_num:
     // pixels are stored in RGBA, so each pixel is 4 bytes
     let num_bytes_in_row = width * 4;
     let mut chunk_size = (height / total_threads) as usize;
-    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let start_byte = num_bytes_in_row * chunk_size * thread_num;
     let extra = height - (chunk_size * total_threads);
     if thread_num == total_threads - 1 {
         chunk_size += extra;
     }
-    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
-    let mut dest = unsafe {
+    let end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let dest = unsafe {
         let start_pointer = dest_pointer.offset(start_byte as isize);
         let size = end_byte - start_byte;
         slice::from_raw_parts_mut(start_pointer, size)
