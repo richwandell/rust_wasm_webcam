@@ -19,6 +19,11 @@ matrix:
       script:
         - node -v
         - cd rust && wasm-pack build
-        - cd ../app && npm ci && npm run-script build
-
+        - cd ../app && npm ci && npm run-script build && cd ..
+      deploy:
+        provider: script
+        edge: true
+        script: netlify deploy --dir=app/dist --prod
+        on:
+          branch: master
 
