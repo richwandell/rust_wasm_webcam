@@ -7,6 +7,7 @@ import {MediaPipeFaceMesh} from "@tensorflow-models/face-landmarks-detection/dis
 import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
 import * as tf from '@tensorflow/tfjs-core';
 import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
+import {TRIANGULATION} from './triangulation';
 
 tfjsWasm.setWasmPaths(`https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`);
 
@@ -52,6 +53,10 @@ export default function Cam(
         numJobs = navigator.hardwareConcurrency,
         tfModel: MediaPipeFaceMesh;
 
+    const GREEN = '#32EEDB';
+    const RED = "#FF2C35";
+    const BLUE = "#157AB3";
+
     function makeWasmSrc() {
         let fileParts = window.location.href.split("/")
         if (fileParts[fileParts.length - 1] === "") fileParts.pop()
@@ -73,6 +78,19 @@ export default function Cam(
         return requestAnimationFrame(drawToCanvas)
     }
 
+    function drawPath(ctx: CanvasRenderingContext2D, points: any, closePath: boolean) {
+        const region = new Path2D();
+        region.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+            const point = points[i];
+            region.lineTo(point[0], point[1]);
+        }
+        if (closePath) {
+            region.closePath();
+        }
+        ctx.stroke(region);
+    }
+
     async function drawMesh() {
         if (video.current === null || ctx === null) return
 
@@ -88,16 +106,30 @@ export default function Cam(
             let width = predictions[i].boundingBox.bottomRight[0] - predictions[i].boundingBox.topLeft[0]
             //@ts-ignore
             let height = predictions[i].boundingBox.bottomRight[1] - predictions[i].boundingBox.topLeft[1]
+            ctx.strokeStyle = RED;
+            ctx.lineWidth = 0.5;
             //@ts-ignore
             ctx.rect(predictions[i].boundingBox.topLeft[0], predictions[i].boundingBox.topLeft[1], width, height);
             ctx.stroke();
 
             const keypoints: Coords3D = predictions[i].scaledMesh as Coords3D;
-            for (let i = 0; i < keypoints.length; i++) {
-                const [x, y, z] = keypoints[i];
-                ctx.beginPath()
-                ctx.arc(x, y, 1, 0, 360)
-                ctx.stroke()
+            // for (let i = 0; i < keypoints.length; i++) {
+            //     const [x, y, z] = keypoints[i];
+            //     ctx.beginPath()
+            //     ctx.arc(x, y, 1, 0, 360)
+            //     ctx.stroke()
+            // }
+
+            ctx.strokeStyle = GREEN;
+            // this triangulation stuff taken from the google demo
+            ctx.beginPath()
+            for (let i = 0; i < TRIANGULATION.length / 3; i++) {
+                const points = [
+                    TRIANGULATION[i * 3], TRIANGULATION[i * 3 + 1],
+                    TRIANGULATION[i * 3 + 2]
+                ].map(index => keypoints[index]);
+
+                drawPath(ctx, points, true);
             }
         }
 
