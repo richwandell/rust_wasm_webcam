@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@tensorflow-models/face-landmarks-detection": "0.0.2",
+    "@tensorflow/tfjs-backend-wasm": "^2.8.2",
+    "@tensorflow/tfjs-converter": "^2.8.2",
+    "@tensorflow/tfjs-core": "^2.8.2",
     "@testing-library/jest-dom": "^5.11.4",
     "@testing-library/react": "^11.1.0",
     "@testing-library/user-event": "^12.1.10",

@@ -12,9 +12,10 @@ function Cam() {
     const embossButton = useRef<HTMLButtonElement>(null)
     const laplacianButton = useRef<HTMLButtonElement>(null)
     const sliderRef = useRef<HTMLInputElement>(null)
+    const faceMeshButton = useRef<HTMLButtonElement>(null)
 
 
-    useEffect(() => cam(sliderRef, canvas, hiddenCanvas, video, sobelButton, boxBlurButton, sharpenButton, embossButton, laplacianButton),
+    useEffect(() => cam(faceMeshButton, sliderRef, canvas, hiddenCanvas, video, sobelButton, boxBlurButton, sharpenButton, embossButton, laplacianButton),
         [sobelButton, video, canvas])
 
     return (
@@ -31,6 +32,7 @@ function Cam() {
                     <li><button ref={sharpenButton}>Sharpen</button></li>
                     <li><button ref={embossButton}>Emboss</button></li>
                     <li><button ref={laplacianButton}>Laplacian</button></li>
+                    <li><button ref={faceMeshButton}>Face Mesh</button></li>
                 </ul>
             </div>
             <canvas ref={canvas} > </canvas>

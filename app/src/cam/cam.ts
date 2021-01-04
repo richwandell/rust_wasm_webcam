@@ -2,10 +2,18 @@ import React from "react";
 //@ts-ignore
 import worker from 'workerize-loader!./worker'; // eslint-disable-line import/no-webpack-loader-syntax
 import {Wasm} from "./camera";
+import {Coords3D} from "@tensorflow-models/face-landmarks-detection/dist/mediapipe-facemesh/util";
+import {MediaPipeFaceMesh} from "@tensorflow-models/face-landmarks-detection/dist/mediapipe-facemesh";
+import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
+import * as tf from '@tensorflow/tfjs-core';
+import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
+
+tfjsWasm.setWasmPaths(`https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${tfjsWasm.version_wasm}/dist/`);
 
 declare function wasm_bindgen(script: string): void
 
 export default function Cam(
+    faceMeshButton: React.RefObject<HTMLButtonElement>,
     sliderRef: React.RefObject<HTMLInputElement>,
     canvas: React.RefObject<HTMLCanvasElement>,
     hiddenCanvas: React.RefObject<HTMLCanvasElement>,
@@ -16,6 +24,7 @@ export default function Cam(
     embossButton: React.RefObject<HTMLButtonElement>,
     laplacianButton: React.RefObject<HTMLButtonElement>
 ) {
+    if (faceMeshButton.current === null) return;
     if (sliderRef.current === null) return;
     if (canvas.current === null) return;
     if (hiddenCanvas.current === null) return;
@@ -37,10 +46,11 @@ export default function Cam(
         workersFinished = 0,
         width = 0,
         height = 0,
-        memory: {buffer: SharedArrayBuffer},
+        memory: { buffer: SharedArrayBuffer },
         wasmSrc: string,
         numThreads = navigator.hardwareConcurrency,
-        numJobs = navigator.hardwareConcurrency;
+        numJobs = navigator.hardwareConcurrency,
+        tfModel: MediaPipeFaceMesh;
 
     function makeWasmSrc() {
         let fileParts = window.location.href.split("/")
@@ -63,6 +73,37 @@ export default function Cam(
         return requestAnimationFrame(drawToCanvas)
     }
 
+    async function drawMesh() {
+        if (video.current === null || ctx === null) return
+
+        const predictions = await tfModel.estimateFaces({
+            input: video.current
+        });
+
+        ctx.drawImage(video.current, 0, 0)
+
+        for (let i = 0; i < predictions.length; i++) {
+            ctx.beginPath();
+            //@ts-ignore
+            let width = predictions[i].boundingBox.bottomRight[0] - predictions[i].boundingBox.topLeft[0]
+            //@ts-ignore
+            let height = predictions[i].boundingBox.bottomRight[1] - predictions[i].boundingBox.topLeft[1]
+            //@ts-ignore
+            ctx.rect(predictions[i].boundingBox.topLeft[0], predictions[i].boundingBox.topLeft[1], width, height);
+            ctx.stroke();
+
+            const keypoints: Coords3D = predictions[i].scaledMesh as Coords3D;
+            for (let i = 0; i < keypoints.length; i++) {
+                const [x, y, z] = keypoints[i];
+                ctx.beginPath()
+                ctx.arc(x, y, 1, 0, 360)
+                ctx.stroke()
+            }
+        }
+
+        return requestAnimationFrame(drawToCanvas)
+    }
+
     function drawToCanvas(time: number) {
         if (!(video.current && canvas.current && hiddenCanvas.current)) return;
         drawFps(time)
@@ -76,6 +117,8 @@ export default function Cam(
         if (effect === 0 || !(width > 0 && canvas.current && ctx && hctx)) {
             ctx?.drawImage(video.current, 0, 0, width, height);
             return requestAnimationFrame(drawToCanvas)
+        } else if (effect === 6) {
+            return drawMesh()
         }
         // get image data from the canvas
         const imageData = hctx.getImageData(0, 0, width, height);
@@ -83,31 +126,32 @@ export default function Cam(
         numJobs = numThreads;
         switch (effect) {
             case 1:
-                for(let i = 0; i < numThreads; i++) {
+                for (let i = 0; i < numThreads; i++) {
                     workers[i].sobel(pointer, width, height, i, numThreads)
                 }
                 break;
             case 2:
-                for(let i = 0; i < numThreads; i++) {
+                for (let i = 0; i < numThreads; i++) {
                     workers[i].box_blur(pointer, width, height, i, numThreads)
                 }
                 break;
             case 3:
-                for(let i = 0; i < numThreads; i++) {
+                for (let i = 0; i < numThreads; i++) {
                     workers[i].sharpen(pointer, width, height, i, numThreads)
                 }
                 break;
             case 4:
-                for(let i = 0; i < numThreads; i++) {
+                for (let i = 0; i < numThreads; i++) {
                     workers[i].emboss(pointer, width, height, i, numThreads)
                 }
                 break;
             case 5:
-                for(let i = 0; i < numThreads; i++) {
+                for (let i = 0; i < numThreads; i++) {
                     workers[i].laplacian(pointer, width, height, i, numThreads)
                 }
                 break;
         }
+
     }
 
     function workerMesageRecieved(message: MessageEvent) {
@@ -176,25 +220,47 @@ export default function Cam(
         lastTime = time;
     }
 
+    function disableSlider() {
+        if (sliderRef.current) sliderRef.current.disabled = true;
+        //@ts-ignore
+        document.querySelector("#slider-concurrency").innerHTML = "NA";
+    }
+
+    function enableSlider() {
+        if (sliderRef.current) sliderRef.current.disabled = false;
+        //@ts-ignore
+        document.querySelector("#slider-concurrency").innerHTML = Number(sliderRef.current.value);
+    }
+
     sobelButton.current.addEventListener("click", () => {
+        enableSlider()
         effect = effect === 1 ? 0 : 1
     })
 
     boxBlurButton.current.addEventListener("click", () => {
+        enableSlider()
         effect = effect === 2 ? 0 : 2
     })
 
     sharpenButton.current.addEventListener("click", () => {
+        enableSlider()
         effect = effect === 3 ? 0 : 3
     })
 
     embossButton.current.addEventListener("click", () => {
+        enableSlider()
         effect = effect === 4 ? 0 : 4
     })
 
     laplacianButton.current.addEventListener("click", () => {
+        enableSlider()
         effect = effect === 5 ? 0 : 5
     });
+
+    faceMeshButton.current.addEventListener("click", () => {
+        disableSlider()
+        effect = effect === 6 ? 0 : 6
+    })
 
     sliderRef.current.addEventListener("input", (e) => {
         //@ts-ignore
@@ -209,6 +275,9 @@ export default function Cam(
         wasm = await wasm_bindgen(wasmSrc);
         //@ts-ignore
         memory = wasm.__wbindgen_export_0;
+        await tf.ready()
+        //@ts-ignore
+        tfModel = await faceLandmarksDetection.load(faceLandmarksDetection.SupportedPackages.mediapipeFacemesh);
         wasmLoaded()
     })();
 
