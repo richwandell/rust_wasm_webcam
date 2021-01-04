@@ -12,6 +12,7 @@ matrix:
       before_install:
         - nvm install 14.15.3
         - nvm install-latest-npm
+        - npm install netlify-cli -g
       before_script:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
         - rustup target add wasm32-unknown-unknown
