@@ -55,7 +55,7 @@ export default function Cam(
 
     const GREEN = '#32EEDB';
     const RED = "#FF2C35";
-    const BLUE = "#157AB3";
+    // const BLUE = "#157AB3";
 
     function makeWasmSrc() {
         let fileParts = window.location.href.split("/")
