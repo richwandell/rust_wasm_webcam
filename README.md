@@ -161,4 +161,81 @@ I've also added a script tag into the app  `index.html` file so that we load the
    <script src="pkg/index.js"></script>
 ```
 
+### Creating threads 
+Ok now that we are able to generate the wasm code from rust and we can load it into the page, let's talk a bit about how we interact with it. I've chosen to create the threads in javascript. I do this by creating `WebWorker` instance. I used an npm module [Workerize Loader](https://www.npmjs.com/package/workerize-loader) to load the web worker code into my CRA app. This gives us a function we can call which returns a module instance containing all of the exported functions that were exported from the web worker. This type of interface was much easier to work with than the browser API using `postMessage` and `onmessage` so I'm happy that I found this module. 
+
+After the web cam is successfully created and we have obtained our canvas contexts we create the web worker instances by calling the `createWorkers` function. This function instantiates a new worker, registers a message handler, and tells this worker to load our wasm code. Notice that the `loadWasm` function accepts the shared memory instance.
+
+```typescript
+function createWorkers() {
+    for (let i = 0; i < numThreads; i++) {
+        const workerInstance = worker()
+        workerInstance.addEventListener('message', workerMesageRecieved)
+        workerInstance.loadWasm(wasmSrc, memory)
+        workers.push(workerInstance)
+    }
+}
+```
+In the web worker code we have a function that will call `wasm_bindgen` and load the web assembly module into the worker passing our memory into the function. When this module is loaded the worker will post a message back to the main thread where we are waiting for all threads to report back.
+
+```typescript
+export async function loadWasm(wasmSrc: string, memory: WebAssembly.Memory) {
+    const module = await fetch(wasmSrc)
+    //@ts-ignore
+    wasm = await wasm_bindgen(await module.arrayBuffer(), memory);
+
+    postMessage({loaded: true})
+}
+```
+
+Back in our main thread we have a function `workerMessageRecieved`. This function accepts message from the web worker. In the first section of our if/else statement we look to see if we have a `message.data.loaded` property. We keep a variable `workersFinished` that is incremented any time a worker is finished with it's job. In this case we have created many workers, set `workersFinished` to zero and we check that `workersFinished` has been incremented up to `numJobs`. After all workers are finished loading the wasm we start the render loop by setting `workersFinished` back to zero and calling `drawToCanvas` for the first time.
+```typescript
+function workerMesageRecieved(message: MessageEvent) {
+    if (message.data.type) return;
+
+    if (message.data.loaded && workersFinished === numJobs - 1) {
+        workersFinished = 0;
+        drawToCanvas(new Date().getTime())
+    } else if (message.data.loaded) {
+       workersFinished += 1;
+    } else if (message.data.workerFinished && workersFinished === numJobs - 1) {
+        ...
+    } else if (message.data.workerFinished) {
+        ...
+    }
+}
+```
+In the `drawToCanvas` function we draw a video frame to our hidden canvas, we use this `ImageData` object to copy pixel information to our memory buffer that is exposed to our threads, and then we call the appropriate function in our web worker that will tell each thread to manipulate a certain section of pixel information in the buffer. A variable `i` is used to indicate which section the thread should work on, and a variable `numThreads` is used to tell the thread how many total threads exist, more on this later.
+
+```typescript
+function drawToCanvas(time: number) {
+    ...
+    // do we need to allocate memory?
+    if (width > 0 && canvas.current && pointer === -1) return allocateMemory(width, height)
+    // draw webcam to canvas
+    hctx?.drawImage(video.current, 0, 0, width, height);
+    ...
+    // get image data from the canvas
+    const imageData = hctx.getImageData(0, 0, width, height);
+    memcopy(imageData.data.buffer, memory.buffer, pointer)
+    numJobs = numThreads;
+    switch (effect) {
+        case 1:
+            for (let i = 0; i < numThreads; i++) {
+                workers[i].sobel(pointer, width, height, i, numThreads)
+            }
+            break;
+            ...
+    }
+}
+```
+The web worker accepts parameters and passes these parameters directly to our rust code.
+```typescript
+export function sobel(pointer: number, width: number, height: number, thread_number: number, total_threads: number) {
+    wasm.sobel(pointer, width, height, thread_number, total_threads)
+    postMessage({workerFinished: true})
+}
+```
+
+Each thread is tasked with working on a section of the image. Sections are broken up vertically. In an image with 100 pixel height, thread 1 would work on rows 1 - 10, thread 2 would work on rows 11 - 20 and so on.
 
