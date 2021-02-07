@@ -239,3 +239,82 @@ export function sobel(pointer: number, width: number, height: number, thread_num
 
 Each thread is tasked with working on a section of the image. Sections are broken up vertically. In an image with 100 pixel height, thread 1 would work on rows 1 - 10, thread 2 would work on rows 11 - 20 and so on.
 
+### Rust Code
+
+Now for the fun part. We have a rust function using the `#[wasm_bindgen]` attribute provided to use by wasm bindgen. This allows us to expose this function to our javascript code. Fist we determine which chunk of memory this thread should work on. This is done by calculating the start byte and end byte. After we have the start and end bytes we use this to get a reference to the memory location starting at the start byte and ending at the end byte. This data is then converted into a 32 bit float and mapped into a rust `Vec`.
+
+```rust
+#[wasm_bindgen]
+pub fn laplacian(dest_pointer: *mut u8, width: usize, height: usize, thread_num: usize, total_threads: usize) {
+    // pixels are stored in RGBA, so each pixel is 4 bytes
+    let num_bytes_in_row = width * 4;
+    let mut chunk_size = (height / total_threads) as usize;
+    let mut start_byte = num_bytes_in_row * chunk_size * thread_num;
+    let extra = height - (chunk_size * total_threads);
+    if thread_num == total_threads - 1 {
+        chunk_size += extra;
+    }
+    let mut end_byte = start_byte + chunk_size * num_bytes_in_row;
+    let mut dest = unsafe {
+        let start_pointer = dest_pointer.offset(start_byte as isize);
+        let size = end_byte - start_byte;
+        slice::from_raw_parts_mut(start_pointer, size)
+    };
+
+    let v: Vec<f32> = dest.iter().map(|x| *x as f32).collect();
+```
+Now that we have our memory chunk we can loop through the pixels in this chunk and calculate the laplacian filter values. For the laplacian we multiply the pixel values for pixels surrounding the current pixel by the following matrix.
+
+| | | |
+| ------------- | ------------- | ---- |
+| 0  | 1  | 0 |
+| 1  | -4  | 1 |
+| 0 | 1 | 0 |
+
+After the rgb values are calculated we set the pixel value directly on our shared memory.
+
+```rust
+let rval =
+    (v[(y1 + x1) as usize] * 0.) + (v[(y1 + x2) as usize] * 1.) + (v[(y1 + x3) as usize] * 0.)
+        + (v[(y2 + x1) as usize] * 1.) + (v[(y2 + x2) as usize] * -4.) + (v[(y2 + x3) as usize] * 1.)
+        + (v[(y3 + x1) as usize] * 0.) + (v[(y3 + x2) as usize] * 1.) + (v[(y3 + x3) as usize] * 0.);
+
+let gval =
+    (v[(y1 + x1 + 1) as usize] * 0.) + (v[(y1 + x2 + 1) as usize] * 1.) + (v[(y1 + x3 + 1) as usize] * 0.)
+        + (v[(y2 + x1 + 1) as usize] * 1.) + (v[(y2 + x2 + 1) as usize] * -4.) + (v[(y2 + x3 + 1) as usize] * 1.)
+        + (v[(y3 + x1 + 1) as usize] * 0.) + (v[(y3 + x2 + 1) as usize] * 1.) + (v[(y3 + x3 + 1) as usize] * 0.);
+
+let bval =
+    (v[(y1 + x1 + 2) as usize] * 0.) + (v[(y1 + x2 + 2) as usize] * 1.) + (v[(y1 + x3 + 2) as usize] * 0.)
+        + (v[(y2 + x1 + 2) as usize] * 1.) + (v[(y2 + x2 + 2) as usize] * -4.) + (v[(y2 + x3 + 2) as usize] * 1.)
+        + (v[(y3 + x1 + 2) as usize] * 0.) + (v[(y3 + x2 + 2) as usize] * 1.) + (v[(y3 + x3 + 2) as usize] * 0.);
+dest[i] = rval as u8;
+dest[i + 1] = gval as u8;
+dest[i + 2] = bval as u8;
+```
+
+### Finishing it up
+
+Due to the fact that this memory is shared between all threads including the main thread, these pixel values are immediatly available in the main thread. After all threads have completed their work the main thread draws this array buffer to the visible canvas.
+
+In our `workerMessageRecieved` function we look for a propertie `workerFinished`. If this property exists we increment the `workersFinished` variable. If the `workersFinished` variable is equal to the number of workers then we copy the `SharedArrayBuffer` memory to a new `ImageData` object and set this new data on the visible canvas.
+
+```typescript
+function workerMesageRecieved(message: MessageEvent) {
+    if (message.data.type) return;
+
+    if (message.data.loaded && workersFinished === numJobs - 1) {
+        ...
+    } else if (message.data.loaded) {
+        ...
+    } else if (message.data.workerFinished && workersFinished === numJobs - 1) {
+        workersFinished = 0;
+        const data = new Uint8ClampedArray(memory.buffer, pointer, width * height * 4).slice(0);
+        const imageDataUpdated = new ImageData(data, width, height);
+        ctx?.putImageData(imageDataUpdated, 0, 0)
+        requestAnimationFrame(drawToCanvas)
+    } else if (message.data.workerFinished) {
+        workersFinished += 1;
+    }
+}
+```
